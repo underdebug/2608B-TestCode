@@ -1,0 +1,25 @@
+{
+  "name": "runPy",
+  "displayName": "runPy",
+  "description": "Join the selection lines with commas and run -exec python in the debug console.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": { "vscode": "^1.75.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "runPy",
+        "title": "runPy"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "f8",
+        "command": "runPy",
+        "when": "editorTextFocus && inDebugMode"
+      }
+    ]
+  }
+}
