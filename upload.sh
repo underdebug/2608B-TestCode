@@ -16,4 +16,4 @@ MSG="${1:-update $(date '+%F %H:%M')}"
 git checkout -B "$BRANCH"
 git add -A
 git commit -m "$MSG" || echo "no changes"
-git push "https://${GH_USER}:${GH_TOKEN}@${REPO}" "$BRANCH"
+git push -f "https://${GH_USER}:${GH_TOKEN}@${REPO}" "$BRANCH"
