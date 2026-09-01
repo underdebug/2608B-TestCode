@@ -16,7 +16,7 @@ np.set_printoptions(suppress=True)
 Path = 'mem/data'
 os.makedirs(Path, exist_ok=True) 
 
-LOG = 1
+LOG = 0
 
 def PRINT(*args, **kwargs):
     print(inspect.currentframe().f_back.f_lineno, *args, **kwargs)
@@ -571,12 +571,12 @@ def _mem(Name, Type=None, Size=None, Step=1):
         sym, is_field  = gdb.lookup_symbol("cudaPointerGetAttributes")
         if LOG: PRINT('sym', sym)
 
-        cudaAttributes = gdb.execute("info functions ^cudaPointerGetAttributes$", to_string=True)
-        if LOG: PRINT(repr(cudaAttributes))
-
-        if 'cudaPointerGetAttributes' in repr(cudaAttributes):
+        try:
             buf = int(gdb.parse_and_eval("(void *) malloc(64)"))
+
+            if LOG: PRINT(f"(int) cudaPointerGetAttributes((void *) {buf:#x}, {Name})")
             rc  = int(gdb.parse_and_eval(f"(int) cudaPointerGetAttributes((void *) {buf:#x}, {Name})"))
+
             t   = int(gdb.parse_and_eval(f"*(int *) {buf:#x}"))
 
             if LOG: PRINT("rc =", rc, " type =", t)
@@ -596,7 +596,9 @@ def _mem(Name, Type=None, Size=None, Step=1):
                 if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
                 np.save(f'{Path}/{Name}.npy', data) 
                 return data
-        else:
+                
+        except gdb.error as e:
+            if LOG: PRINT('pga failed:', e)
             if LOG: PRINT('mem cpu', Name, Type, Size)
             data = cpu(Name, Type, Size)
             if LOG: PRINT('data', type(data), data)
