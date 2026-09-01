@@ -1,0 +1,7 @@
+View	Windows/Linux	Mac
+Explorer	Ctrl+Shift+E	Cmd+Shift+E
+Search	Ctrl+Shift+F	Cmd+Shift+F
+Source Control	Ctrl+Shift+G	Ctrl+Shift+G
+Run and Debug	Ctrl+Shift+D	Cmd+Shift+D
+Extensions	Ctrl+Shift+X	Cmd+Shift+X
+Toggle sidebar on/off	Ctrl+B	Cmd+B
