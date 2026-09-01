@@ -5,10 +5,9 @@
             "name": "CUDA-GDB",
             "type": "cuda-gdb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/test",
+            "program": "${workspaceFolder}/test",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "CUDA Make",
-            "internalConsoleOptions": "openOnSessionStart"
         }
     ]
 }

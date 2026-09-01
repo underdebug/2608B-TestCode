@@ -4,7 +4,7 @@
         {
             "label": "CUDA Make",
             "type": "shell",
-            "command": "cmake --build ${workspaceFolder}/build",
+            "command": "cmake --build ${env:HOME}/develop/build/${workspaceFolderBasename}",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -16,7 +16,7 @@
         {
             "label": "Run",
             "type": "shell",
-            "command": "${workspaceFolder}/build/test",
+            "command": "${workspaceFolder}/test",
             "dependsOn": "CUDA Make",
             "group": "test",
             "presentation": {
