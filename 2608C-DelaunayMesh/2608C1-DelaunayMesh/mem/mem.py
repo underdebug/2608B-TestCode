@@ -16,7 +16,7 @@ np.set_printoptions(suppress=True)
 Path = 'mem/data'
 os.makedirs(Path, exist_ok=True) 
 
-LOG = 1
+LOG = 0
 
 def PRINT(*args, **kwargs):
     print(inspect.currentframe().f_back.f_lineno, *args, **kwargs)
@@ -274,6 +274,8 @@ def cpu(Name, Type=None, Size=None):
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
+
+            if LOG: PRINT('Size_t', Size_t, 'Size', Size)
             Size = Size_t if Size is None else min(Size, Size_t)
 
             if Type not in _CPU_MAP:
@@ -312,6 +314,7 @@ def cpu(Name, Type=None, Size=None):
                 return results
             else:     
                 data_addr = int(para['_M_impl']['_M_start'])
+                if LOG: PRINT('mem cpu read', data_addr, Type, Size)
                 return read(data_addr, Type, Size)    
 
         elif str(t).startswith("std::array") or str(t).startswith("const std::array"):
@@ -336,7 +339,7 @@ def cpu(Name, Type=None, Size=None):
         else:
             if LOG: PRINT('t.fields()', t.fields())
 
-            results = []
+            results = {}
             for f in t.fields():
                 if LOG: PRINT('f.name', f.name)
                 if f.is_base_class or f.bitpos is None or not f.name:
@@ -355,14 +358,15 @@ def cpu(Name, Type=None, Size=None):
                     if value.size == 1:
                         value = value.item()
                     if LOG: PRINT('value2', value)
-                results.append([f.name, value])
+                results[f.name] = value
 
             if LOG: PRINT('results', results)
-            results = results[0] if len(results) == 1 else results
-            return np.array(results, dtype=object)
+            return results
+            # results = results[0] if len(results) == 1 else results
+            # return np.array(results, dtype=object)
 
     elif t.code == gdb.TYPE_CODE_INT: # 8
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT)
+        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
         if t.sizeof == 1:
             return np.int8(para) if t.is_signed else np.uint8(para)
         elif t.sizeof == 2:
@@ -545,7 +549,8 @@ def _mem(Name, Type=None, Size=None, Step=1):
     if Type is not None and Type in _FULL_TYPE:
         Type = _FULL_TYPE[Type]  
     
-    Size = np.atleast_1d(np.asarray(Size))
+    if Size is not None:
+        Size = np.atleast_1d(np.asarray(Size))
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 

@@ -32,7 +32,7 @@ plt.figure()
 plt.plot(x, y, '.')
 
 for i, (xi, yi) in enumerate(zip(x, y)):
-    plt.text(xi, yi, str(i))
+    plt.text(xi, yi, str(i),  fontsize=4)
 
 # triangles
 triangles = mem('triangles')
@@ -46,8 +46,8 @@ for i in range(0, len(triangles), 3):
     xx = x[tri]
     yy = y[tri]
 
-    plt.text(xx.mean(), yy.mean(), str(i // 3),
-             ha='center', va='center', fontsize=8)
+    # plt.text(xx.mean(), yy.mean(), str(i // 3),
+    #          ha='center', va='center', fontsize=6)
 
     plt.fill(xx, yy, facecolor=rng.random(3), alpha=0.5, edgecolor='none')
     plt.plot(np.append(xx, xx[0]), np.append(yy, yy[0]), color='r', lw=1.0)
@@ -75,7 +75,7 @@ for e in range(0, len(triangles)):
     x0 = x[p] * (1 - t) + x[q] * t
     y0 = y[p] * (1 - t) + y[q] * t
 
-    plt.text(x0, y0, f'{e},{he}')
+    # plt.text(x0, y0, f'{e},{he}',  fontsize=6)
 
 if "index" not in globals():
     index = 0
@@ -92,9 +92,9 @@ hull_tri = mem('hull_tri')
 
 print('n', n)
 print('hull_start', hull_start)
-print('hull_prev', hull_prev)
-print('hull_next', hull_next)
-print('hull_tri', hull_tri)
+# print('hull_prev', hull_prev)
+# print('hull_next', hull_next)
+# print('hull_tri', hull_tri)
 
 node = hull_start
 hull = [node]

@@ -12,8 +12,6 @@
 #include <tuple>
 #include <vector>
 
-// https://github.com/abellgithub/delaunator-cpp
-
 namespace delaunator {
 
 //@see https://stackoverflow.com/questions/33333363/built-in-mod-vs-custom-mod-function-improve-the-performance-of-modulus-op/33333636#33333636
@@ -348,12 +346,6 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
             // ABELL - Not sure how hull_next[start] could ever equal start
             // I *think* hull_next is just a representation of the hull in one
             // direction.
-            if (start != INVALID_INDEX){
-                if(start != hull_next[start])
-                    printf("b");
-                else
-                    printf("x");
-            }
             if (start != INVALID_INDEX && start != hull_next[start])
                 break;
         }
@@ -447,23 +439,6 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
 
         m_hash[hash_key(x, y)] = i;
         m_hash[hash_key(coords[2 * e], coords[2 * e + 1])] = e;
-    
-        printf("\nk = %d", k);
-        
-        printf("\nhull_next:");
-        int next1 = hull_start;
-        do{
-            printf(" %d", next1);
-            next1 = hull_next[next1];
-        }while(next1 != hull_start);
-
-        printf("\nm_hash %d:", m_hash_size);
-        for(int i = 0; i < m_hash_size; i++){
-            if(m_hash[i] != INVALID_INDEX){
-                printf(" <%d, %d>", i, m_hash[i]);
-            }
-        }
-        printf("\n");
     }
 }
 

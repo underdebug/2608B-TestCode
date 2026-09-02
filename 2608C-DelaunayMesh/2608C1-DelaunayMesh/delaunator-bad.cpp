@@ -12,8 +12,6 @@
 #include <tuple>
 #include <vector>
 
-// https://github.com/abellgithub/delaunator-cpp
-
 namespace delaunator {
 
 //@see https://stackoverflow.com/questions/33333363/built-in-mod-vs-custom-mod-function-improve-the-performance-of-modulus-op/33333636#33333636
@@ -306,9 +304,22 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
     hull_tri[i1] = 1;
     hull_tri[i2] = 2;
 
-    m_hash[hash_key(i0x, i0y)] = i0;
-    m_hash[hash_key(i1x, i1y)] = i1;
-    m_hash[hash_key(i2x, i2y)] = i2;
+    // start
+    std::vector<int> keys;
+    for (std::size_t k = 0; k < n; k++) {
+        const std::size_t i = ids[k];
+        int key = hash_key(m_points[i].x(), m_points[i].y());
+        keys.push_back(key);
+    }
+    
+    int key0 = hash_key(i0x, i0y); // 2
+    int key1 = hash_key(i1x, i1y); // 1
+    int key2 = hash_key(i2x, i2y); // 3
+    // end
+
+    m_hash[hash_key(i0x, i0y)] = i0; // 1
+    m_hash[hash_key(i1x, i1y)] = i1; // 6
+    m_hash[hash_key(i2x, i2y)] = i2; // 0
 
     // ABELL - Why are we doing this is n < 3?  There is no triangulation if
     //  there is no triangle.
@@ -341,27 +352,32 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
         // find a visible edge on the convex hull using edge hash
         std::size_t start = 0;
 
+        // first insert index 7
+
         size_t key = hash_key(x, y);
         for (size_t j = 0; j < m_hash_size; j++) {
+            int key_mod = fast_mod(key + j, m_hash_size);
             start = m_hash[fast_mod(key + j, m_hash_size)];
+
+            // size_t next = -1;
+            // if (start != INVALID_INDEX) {
+            //     next = hull_next[start];
+            // }
 
             // ABELL - Not sure how hull_next[start] could ever equal start
             // I *think* hull_next is just a representation of the hull in one
             // direction.
-            if (start != INVALID_INDEX){
-                if(start != hull_next[start])
-                    printf("b");
-                else
-                    printf("x");
-            }
-            if (start != INVALID_INDEX && start != hull_next[start])
+            // if (start != INVALID_INDEX && start != hull_next[start])
+            //     break;
+
+            if (start != INVALID_INDEX)
                 break;
         }
 
         //ABELL
         // Make sure what we found is on the hull.
-        assert(hull_prev[start] != start);
-        assert(hull_prev[start] != INVALID_INDEX);
+     //   assert(hull_prev[start] != start);
+     //   assert(hull_prev[start] != INVALID_INDEX);
 
         start = hull_prev[start];
         size_t e = start;
@@ -369,17 +385,17 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
 
         // Advance until we find a place in the hull where our current point
         // can be added.
+        int n = 0;
         while (true)
         {
+            n++;
             q = hull_next[e];
-            if (Point::equal(m_points[i], m_points[e], span) ||
-                Point::equal(m_points[i], m_points[q], span))
+            if (Point::equal(m_points[i], m_points[e], span) || Point::equal(m_points[i], m_points[q], span))
             {
                 e = INVALID_INDEX;
                 break;
             }
-            if (counterclockwise(x, y, coords[2 * e], coords[2 * e + 1],
-                coords[2 * q], coords[2 * q + 1]))
+            if (counterclockwise(x, y, coords[2 * e], coords[2 * e + 1], coords[2 * q], coords[2 * q + 1]))
                 break;
             e = q;
             if (e == start) {
@@ -390,8 +406,8 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
 
         // ABELL
         // This seems wrong.  Perhaps we should check what's going on?
-        if (e == INVALID_INDEX)     // likely a near-duplicate point; skip it
-            continue;
+     //   if (e == INVALID_INDEX)     // likely a near-duplicate point; skip it
+     //       continue;
 
         // add the first triangle from the point
         std::size_t t = add_triangle(
@@ -402,7 +418,8 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
             INVALID_INDEX,
             hull_tri[e]);
 
-        hull_tri[i] = legalize(t + 2); // Legalize the triangle we just added.
+        int legal = legalize(t + 2);
+        hull_tri[i] = legal; // Legalize the triangle we just added.
         hull_tri[e] = t;
 
         // walk forward through the hull, adding more triangles and
@@ -447,23 +464,6 @@ Delaunator::Delaunator(std::vector<double> const& in_coords)
 
         m_hash[hash_key(x, y)] = i;
         m_hash[hash_key(coords[2 * e], coords[2 * e + 1])] = e;
-    
-        printf("\nk = %d", k);
-        
-        printf("\nhull_next:");
-        int next1 = hull_start;
-        do{
-            printf(" %d", next1);
-            next1 = hull_next[next1];
-        }while(next1 != hull_start);
-
-        printf("\nm_hash %d:", m_hash_size);
-        for(int i = 0; i < m_hash_size; i++){
-            if(m_hash[i] != INVALID_INDEX){
-                printf(" <%d, %d>", i, m_hash[i]);
-            }
-        }
-        printf("\n");
     }
 }
 
@@ -639,9 +639,28 @@ void Delaunator::link(const std::size_t a, const std::size_t b) {
         } else if (b < s2) {
             halfedges[b] = a;
         } else {
-            throw std::runtime_error("Cannot link edge");
+            //throw std::runtime_error("Cannot link edge");
         }
     }
+
+    // std::size_t s = halfedges.size();
+    // if (a == s) {
+    //     halfedges.push_back(b);
+    // } else if (a < s) {
+    //     halfedges[a] = b;
+    // } else {
+    //     throw std::runtime_error("Cannot link edge");
+    // }
+    // if (b != INVALID_INDEX) {
+    //     std::size_t s2 = halfedges.size();
+    //     halfedges.push_back(a);
+    //     if (b == s2) {
+    //     } else if (b < s2) {
+    //         halfedges[b] = a;
+    //     } else {
+    //         throw std::runtime_error("Cannot link edge");
+    //     }
+    // }
 }
 
 } //namespace delaunator

@@ -12,6 +12,12 @@
 // Toggle sidebar on/off	Ctrl+B	Cmd+B
 
 int main() {
+    //----------------------------------------------------------------
+    freopen("log.txt", "w", stdout);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    // tail -f log.txt
+ 
+
     using namespace delaunator;
 
     /* x0, y0, x1, y1, ... */
@@ -23,52 +29,54 @@ int main() {
     //triangulation happens here
     Delaunator d(coords);
 
-    auto xcoord = [&d](size_t tri, int coord) -> double
-    {
-        size_t index = d.triangles[tri + coord];
-        return d.coords[2 * index];
-    };
+    printf("");
 
-    auto ycoord = [&d](size_t tri, int coord) -> double
-    {
-        size_t index = d.triangles[tri + coord];
-        return d.coords[2 * index + 1];
-    };
+    // auto xcoord = [&d](size_t tri, int coord) -> double
+    // {
+    //     size_t index = d.triangles[tri + coord];
+    //     return d.coords[2 * index];
+    // };
 
-    for (std::size_t i = 0; i < d.triangles.size(); i += 3) {
-        std::cout << "Triangle " << (i / 3) << " points: [[" <<
-            xcoord(i, 0) << ", " << ycoord(i, 0) << "], [" <<
-            xcoord(i, 1) << ", " << ycoord(i, 1) << "], [" <<
-            xcoord(i, 2) << ", " << ycoord(i, 2) << "]]\n";
-    }
+    // auto ycoord = [&d](size_t tri, int coord) -> double
+    // {
+    //     size_t index = d.triangles[tri + coord];
+    //     return d.coords[2 * index + 1];
+    // };
 
-    std::vector<double> x, y;
-    for (std::size_t i = 0; i < d.triangles.size(); i += 3) {
-        x.push_back(xcoord(i, 0));
-        x.push_back(xcoord(i, 1));
-        x.push_back(xcoord(i, 2));
+    // for (std::size_t i = 0; i < d.triangles.size(); i += 3) {
+    //     std::cout << "Triangle " << (i / 3) << " points: [[" <<
+    //         xcoord(i, 0) << ", " << ycoord(i, 0) << "], [" <<
+    //         xcoord(i, 1) << ", " << ycoord(i, 1) << "], [" <<
+    //         xcoord(i, 2) << ", " << ycoord(i, 2) << "]]\n";
+    // }
 
-        y.push_back(ycoord(i, 0));
-        y.push_back(ycoord(i, 1));
-        y.push_back(ycoord(i, 2));
+    // std::vector<double> x, y;
+    // for (std::size_t i = 0; i < d.triangles.size(); i += 3) {
+    //     x.push_back(xcoord(i, 0));
+    //     x.push_back(xcoord(i, 1));
+    //     x.push_back(xcoord(i, 2));
 
-        printf("x: %f %f %f  y: %f %f %f\n",
-            xcoord(i, 0), xcoord(i, 1), xcoord(i, 2),
-            ycoord(i, 0), ycoord(i, 1), ycoord(i, 2));
-    }
+    //     y.push_back(ycoord(i, 0));
+    //     y.push_back(ycoord(i, 1));
+    //     y.push_back(ycoord(i, 2));
 
-    auto adjTriangle = [&d](size_t edge) -> std::string
-    {
-        size_t adj = d.halfedges[edge];
-        return adj == INVALID_INDEX ? "None" : std::to_string(adj / 3);
-    };
+    //     printf("x: %f %f %f  y: %f %f %f\n",
+    //         xcoord(i, 0), xcoord(i, 1), xcoord(i, 2),
+    //         ycoord(i, 0), ycoord(i, 1), ycoord(i, 2));
+    // }
 
-    for (std::size_t i = 0; i < d.triangles.size(); i += 3)
-    {
-        printf("Adjacent triangles for triangle number %zu: %s, %s and %s\n",
-            i / 3,
-            adjTriangle(i).c_str(),
-            adjTriangle(i + 1).c_str(),
-            adjTriangle(i + 2).c_str());
-    }
+    // auto adjTriangle = [&d](size_t edge) -> std::string
+    // {
+    //     size_t adj = d.halfedges[edge];
+    //     return adj == INVALID_INDEX ? "None" : std::to_string(adj / 3);
+    // };
+
+    // for (std::size_t i = 0; i < d.triangles.size(); i += 3)
+    // {
+    //     printf("Adjacent triangles for triangle number %zu: %s, %s and %s\n",
+    //         i / 3,
+    //         adjTriangle(i).c_str(),
+    //         adjTriangle(i + 1).c_str(),
+    //         adjTriangle(i + 2).c_str());
+    // }
 }

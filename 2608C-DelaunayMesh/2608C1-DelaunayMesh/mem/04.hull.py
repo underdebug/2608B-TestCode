@@ -28,10 +28,10 @@ start = mem('start')
 print('start', start)
 
 m_points = mem('m_points', None, None)
-print('m_points', type(m_points), m_points)
+# print('m_points', type(m_points), m_points)
 
 m_coords = m_points['m_coords']
-print('m_coords', type(m_coords), m_coords)
+# print('m_coords', type(m_coords), m_coords)
 
 x = m_coords[0::2]
 y = m_coords[1::2]
@@ -48,33 +48,63 @@ plt.plot(x, y, '.')
 
 hull_next = mem('hull_next', None, None) 
 hull_start = mem('hull_start', None, None) 
+start = mem('start', None, None) 
+print('start', start)
+
+# print('hull_next', hull_next)
 
 hull = [hull_start]
-
-# LINE 4: You use square brackets []. This implies hull_next is a dict or list.
 next = hull_next[hull_start] 
 
-while next != hull_start:
+n = 0
+while next != hull_start and n < 50:
     hull.append(next)
-    
-    # LINE 6: ERROR! You use parentheses (). 
-    # If hull_next is a dict, this throws: "TypeError: 'dict' object is not callable"
-    # If hull_next is a function, Line 4 would have failed first.
     next = hull_next[next] 
+    n = n + 1
 
-xx = x[hull]
-yy = y[hull]
+print('hull 1', hull)
+
+INVALID_INDEX = 2**64 - 1
+
+pairs = ' '.join(f'<{i}, {v}>' for i, v in enumerate(hull_next) if v != INVALID_INDEX)
+print(f'hull: {pairs}')
+
+
+# hull = [start]
+# next = hull_next[start] 
+
+# n = 0
+# while next != start and n < 50:
+#     hull.append(next)
+#     next = hull_next[next] 
+#     n = n + 1
+
+# print('hull 2', hull)
+
+# xx = x[hull]
+# yy = y[hull]
+
+
+m_hash_size = mem('m_hash_size', None, None) 
+m_hash = mem('m_hash', None, m_hash_size) 
+# print('m_hash', m_hash_size, m_hash)
+
+INVALID_INDEX = 2**64 - 1
+
+pairs = ' '.join(f'<{i}, {v}>' for i, v in enumerate(m_hash) if v != INVALID_INDEX)
+print(f'm_hash {m_hash_size}: {pairs}')
+
+# plt.plot(xx, yy, 'r.-')
 
 
 
+# file = f'{SavePath}/04.hull.png';
+# plt.savefig(file, dpi=300, bbox_inches='tight')
 
-
-
-file = f'{SavePath}/04.hull.png';
-plt.savefig(file, dpi=300, bbox_inches='tight')
-
-import subprocess
+# import subprocess
 # subprocess.run(['xdg-open', file], stderr=subprocess.DEVNULL)
+
+
 
 # return
 

@@ -11,6 +11,21 @@ struct Elem
     struct Elem* next = NULL;
 };
 
+
+class Points
+{
+public:
+    Points()
+    {
+        m_coords.push_back(0.1);
+        m_coords.push_back(0.2);
+        m_coords.push_back(0.3);
+    }
+
+private:
+    std::vector<double> m_coords;
+};
+
 __global__ void kernelNearest(float* data1, int size1, float* data2, int size2, int* index2)
 {
     int i1 = blockIdx.x * blockDim.x + threadIdx.x;
@@ -32,7 +47,9 @@ __global__ void kernelNearest(float* data1, int size1, float* data2, int size2, 
     }
 }
 
-int main() {
+int main() 
+{
+    //----------------------------------------------------------------
     freopen("log.txt", "w", stdout);
     setvbuf(stdout, nullptr, _IONBF, 0);
     // tail -f log.txt
@@ -101,8 +118,7 @@ int main() {
 
     double b2[2][2] = {{3, 4}, {7, 8}};
 
-    // GPU test
-
+    //----------------------------------------------------------------
     // kernelNearest test data
     float h_data1[20] = {
         1.0f, 2.5f, 3.3f, 7.0f, 9.9f, 0.2f, 4.4f, 5.5f, 6.6f, 8.8f,
@@ -139,6 +155,14 @@ int main() {
     cudaFree(d_data1);
     cudaFree(d_data2);
     cudaFree(d_index2);
+
+    //----------------------------------------------------------------
+
+    Points m_points;
+
+    std::vector<int> vec;
+    vec.push_back(1);
+    vec.push_back(2);
 
     return 0;
 

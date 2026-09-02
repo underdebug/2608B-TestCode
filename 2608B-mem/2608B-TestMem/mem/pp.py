@@ -27,3 +27,18 @@ print('h_data1', h_data1)
 d_data1 = mem('d_data1', 'float', 12)
 print('d_data1', d_data1)
 
+m_points = mem('m_points', None, 12)
+print('m_points', m_points)
+
+m_points = mem('m_points', None, None)
+print('m_points2', m_points)
+
+
+m_coords = m_points['m_coords']
+print('m_coords', type(m_coords), m_coords)
+
+x = m_coords[0::2]
+y = m_coords[1::2]
+
+x = m_points['m_coords'][0::2]
+y = m_points['m_coords'][1::2]
