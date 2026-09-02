@@ -1,5 +1,0 @@
-{
-    "cmake.sourceDirectory": "${workspaceFolder}",
-    "cmake.buildDirectory": "${env:HOME}/develop/build/${workspaceFolderBasename}",
-    "cmake.configureOnOpen": false
-}
