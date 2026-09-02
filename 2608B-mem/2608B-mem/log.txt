@@ -1,0 +1,9 @@
+e.value = 1, e.next = 0x7fffffffd4d0
+e.value = 2, e.next = (nil)
+s3 = hello world (len=11)
+vector: 0 1 4 9 16
+list: 0 1 2
+alice = 30, bob = 25
+found bob = 25
+  alice -> 30
+  bob -> 25
