@@ -1,15 +1,15 @@
 
 
 e1 = mem('e1', None, 12)
-print('e1.type', len(e1), type(e1), e1.tolist())
+print('e1.type', len(e1), type(e1), e1)
 
 s1 = mem('s1', None, 12)
 print('s1 finish', s1)
 
-a = mem('a', None, 12)
+a = mem('a', None, 2)
 print('a1 finish', a)
 
-a = mem('a', 'double', 12)
+a = mem('a', 'double', 2)
 print('a2 finish', a)
 
 b = mem('b', 'double', 2)

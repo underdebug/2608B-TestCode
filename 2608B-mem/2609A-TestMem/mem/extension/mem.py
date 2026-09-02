@@ -1,7 +1,24 @@
+# MIT License
 
-#------------------------------------------------------------------------
-# python3 -m mem mem.py
-#------------------------------------------------------------------------
+# Copyright (c) 2026 Mingjie Zhang (mingjie2026@gmail.com)
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import gdb
 import subprocess
@@ -10,49 +27,15 @@ import sys
 import numpy as np
 import inspect
 
+LOG = 1
+
 np.set_printoptions(linewidth=256)
 np.set_printoptions(suppress=True)
-
 Path = 'mem/data'
 os.makedirs(Path, exist_ok=True) 
 
-LOG = 0
-
 def PRINT(*args, **kwargs):
     print(inspect.currentframe().f_back.f_lineno, *args, **kwargs)
-
-# Value  Constant                     Meaning
-# -1     TYPE_CODE_BITSTRING          Bit string (deprecated, kept for compatibility)
-# 1      TYPE_CODE_PTR                Pointer, e.g. T*
-# 2      TYPE_CODE_ARRAY              Array, e.g. T[N]
-# 3      TYPE_CODE_STRUCT             Struct or C++ class
-# 4      TYPE_CODE_UNION              Union
-# 5      TYPE_CODE_ENUM               Enumeration
-# 6      TYPE_CODE_FLAGS              Bit-flags register type (e.g. eflags)
-# 7      TYPE_CODE_FUNC               Function type
-# 8      TYPE_CODE_INT                Integer (int, long, size_t, ...)
-# 9      TYPE_CODE_FLT                Floating point (float, double)
-# 10     TYPE_CODE_VOID               void
-# 11     TYPE_CODE_SET                Set type (Pascal / Modula-2)
-# 12     TYPE_CODE_RANGE              Range type (array index bounds, etc.)
-# 13     TYPE_CODE_STRING             String type (Fortran-style, NOT char*)
-# 14     TYPE_CODE_ERROR              Unrecognized / corrupt debug info
-# 15     TYPE_CODE_METHOD             C++ member function type
-# 16     TYPE_CODE_METHODPTR          Pointer to member function, void (T::*)()
-# 17     TYPE_CODE_MEMBERPTR          Pointer to data member, int T::*
-# 18     TYPE_CODE_REF                C++ lvalue reference, T&
-# 19     TYPE_CODE_RVALUE_REF         C++ rvalue reference, T&&
-# 20     TYPE_CODE_CHAR               Character type, char
-# 21     TYPE_CODE_BOOL               Boolean, bool
-# 22     TYPE_CODE_COMPLEX            Complex number, _Complex
-# 23     TYPE_CODE_TYPEDEF            typedef / using alias (not yet stripped)
-# 24     TYPE_CODE_NAMESPACE          C++ namespace
-# 25     TYPE_CODE_DECFLOAT           Decimal float (_Decimal64, etc.)
-# 26     TYPE_CODE_MODULE             Module (Fortran)
-# 27     TYPE_CODE_INTERNAL_FUNCTION  GDB internal convenience function ($_strlen, ...)
-# 28     TYPE_CODE_XMETHOD            Python-defined extension method (xmethod)
-# 29     TYPE_CODE_FIXED_POINT        Fixed-point number type
-# 30     TYPE_CODE_NAMELIST           Fortran namelist
 
 def get_pids(name):
     pids = []
@@ -79,14 +62,6 @@ def read_memory(pid, addr, size):
         return f.read(size)
 
 def mon(app, addr, type, size):
-    r = subprocess.run(
-        # sudo sysctl kernel.yama.ptrace_scope=0
-        ["sudo", "sysctl", "kernel.yama.ptrace_scope=0"]#, capture_output=True, text=True
-    )
-    if r.returncode != 0:
-        print("sudo sysctl kernel.yama.ptrace_scope=0 fail")  
-        sys.exit()
-
     pid = get_pids(app)[0]
     addr_t = int(addr, 0) if isinstance(addr, str) else int(addr)
 
@@ -103,9 +78,19 @@ def mon(app, addr, type, size):
         data = data.reshape(shape)
     return data
 
-#------------------------------------------------------------------------
-# cpu
-#------------------------------------------------------------------------
+
+_CPU_MAP = {
+    'unsigned char':            np.uint8,
+    'char':                     np.int8,
+    'unsigned short':           np.uint16,      
+    'short':                    np.int16,
+    'unsigned int':             np.uint32,        
+    'int':                      np.int32,
+    'unsigned long long':       np.uint64,
+    'unsigned long':            np.dtype('L'),
+    'float':                    np.float32,
+    'double':                   np.float64,       
+}
 
 def read(Addr, Type, Size):
     shape = Size if isinstance(Size, (list, tuple)) else [Size]
@@ -122,28 +107,7 @@ def read(Addr, Type, Size):
         data = data.reshape(shape)
     return data
 
-_CPU_MAP = {
-    'unsigned char':            np.uint8,
-    'char':                     np.int8,
-    'unsigned short':           np.uint16,      
-    'short':                    np.int16,
-    'unsigned int':             np.uint32,        
-    'int':                      np.int32,
-    'unsigned long long':       np.uint64,
-    'unsigned long':            np.dtype('L'),
-    'float':                    np.float32,
-    'double':                   np.float64,       
-}
-
 def cpu(Name, Type=None, Size=None):   
-#    r = subprocess.run(
-#        # sudo sysctl kernel.yama.ptrace_scope=0
-#        ["sudo", "sysctl", "kernel.yama.ptrace_scope=0"]#, capture_output=True, text=True
-#    )
-#    if r.returncode != 0:
-#        print("sudo sysctl kernel.yama.ptrace_scope=0 fail")  
-#        sys.exit()
-
     para = gdb.parse_and_eval(Name)
     t = para.type.strip_typedefs()
  
@@ -154,77 +118,99 @@ def cpu(Name, Type=None, Size=None):
     if t.code == gdb.TYPE_CODE_PTR: # 1 
         if LOG: PRINT('str(t)', str(t))
 
-        if Type is not None:
-            Addr = int(para)
-            return read(Addr, Type, Size)
-        elif str(t).startswith("std::vector") or str(t).startswith("const std::vector"):
+        if "std::vector" in str(t): # vector
             para = para.dereference()
-            data_addr = int(para['_M_impl']['_M_start'])
+            Addr = int(para['_M_impl']['_M_start'])
+
+            if Type is None:
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
 
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
             Size = Size_t if Size is None else min(Size, Size_t)
 
-            return read(data_addr, Type, Size)   
+            return read(Addr, Type, Size)   
 
-        elif str(t).startswith("std::array") or str(t).startswith("const std::array"):
+        elif "std::array" in str(t): # array
             para = para.dereference()
-            data_addr = int(para['_M_elems'].address)
-            return read(data_addr, Type, Size)
+            Addr = int(para['_M_elems'].address)
 
-        elif str(t).startswith("std::pair") or str(t).startswith("const std::pair"):
+            if Type is None:
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
+
+            return read(Addr, Type, Size)
+
+        elif "std::pair" in str(t): # pair
             para = para.dereference()
-            data_addr = int(para.address)
-            return read(data_addr, Type, Size)
+            Addr = int(para.address)
 
-        elif 'basic_string' in str(t):
+            if Type is None:
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
+
+            Size = 2 if Size is None else min(Size, 2)
+
+            return read(Addr, Type, Size)
+
+        elif 'basic_string' in str(t): # string
             n = int(para['_M_string_length'])
             s = para['_M_dataplus']['_M_p'].string(length=n)
             return s
 
+        elif Type is not None: # like int*
+            Addr = int(para)
+
+            if Type is None:
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
+
+            return read(Addr, Type, Size)
+
         else:
-            dtype = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
+            if Type is None: # Type:None like int*
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
         
-            if dtype is None:
-                para = para.dereference()
+            if Type is not None: # like float32*
+                Addr = int(para)
+                return read(Addr, Type, Size)
+
+            else:
+                para = para.dereference() # struct
                 t = para.type.strip_typedefs()
 
                 if LOG: PRINT('t.fields()', t.fields())
-                names = []
+                results = {}
                 for f in t.fields():
                     if LOG: PRINT('f.name', f.name)
 
                     if f.is_base_class or f.bitpos is None or not f.name:
                         continue;
-                    ftype = f.type.strip_typedefs().unqualified()
                     
-                    if ftype.code == gdb.TYPE_CODE_PTR:
-                        names.append([f.name, 1])
-                    else:
-                        for key in _CPU_MAP:
-                            if key == str(ftype):
-                                names.append([f.name, 0])
-                                break;
+                    ftype = f.type.strip_typedefs().unqualified()
+                    if ftype.code == gdb.TYPE_CODE_PTR: # struct pointer
+                        if LOG: PRINT(f'{Name}->{f.name}', gdb.TYPE_CODE_PTR)
+                        value = int(gdb.parse_and_eval(f'{Name}->{f.name}'))
+                        if LOG: PRINT('value', type(value), value)
 
-                if LOG: PRINT('Type', Type, 'names', names)
+                    else: # struct elem
+                        if LOG: PRINT(f'{Name}->{f.name}')
+                        value = cpu(f'{Name}->{f.name}', None, Size)
+                        if LOG: PRINT('value1', value)
+                        value = np.asarray(value)
+                        if value.size == 1:
+                            value = value.item()
+                        if LOG: PRINT('value2', value)
 
-                results = {name[0]: [] for name in names}
+                    results[f.name] = value
 
-                for name in names:
-                    if(name[1] == 1):
-                        para_t = gdb.parse_and_eval(f'{Name}->{name[0]}')
-                        if LOG: PRINT('para_t', para_t, 'hex(int(para_t))', hex(int(para_t)))
-                        results[name[0]] = hex(int(para_t))
-                    else:
-                        results[name[0]] = cpu(f'{Name}->{name[0]}', None, None)
-
-                return results
-            else:
-                Addr = int(para)
-                return read(Addr, dtype, Size)
+                if LOG: PRINT('results', results)
+                return results                
         
     elif t.code == gdb.TYPE_CODE_ARRAY: # 2   
+        if Type is None:
+            s = str(t.target().strip_typedefs().unqualified())
+            Type = next((k for k, v in _CPU_MAP.items() if k in s), None)
+    
+        # get array size line int[2][3]
         et, dims = t, []
         while et.code == gdb.TYPE_CODE_ARRAY:
             lo, hi = et.range()
@@ -241,17 +227,15 @@ def cpu(Name, Type=None, Size=None):
             
         if LOG: PRINT('dims', dims)
 
-        elem_t = t.target().strip_typedefs().unqualified()
-        Type = str(elem_t)
+        if Type is not None:
+            Addr = int(para.address)
 
-        if LOG: PRINT('Type new', Type)
-
-        dtype = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
+            if Type is None: # Type:None like int*
+                Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
         
-        if dtype is not None:
-            data_addr = int(para.address)
-            if LOG: PRINT(data_addr, dtype, Size)
-            return read(data_addr, dtype, Size)  
+            if LOG: PRINT(Addr, Type, Size)
+            return read(Addr, Type, Size)  
+
         else:
             if LOG: PRINT('Type', Type)
             if len(Size) == 1:   
@@ -268,65 +252,60 @@ def cpu(Name, Type=None, Size=None):
                 return results;     
 
     elif t.code == gdb.TYPE_CODE_STRUCT: # 3
-        if str(t).startswith("std::vector") or str(t).startswith("const std::vector"):
-            Type = str(t.template_argument(0)) if Type is None else Type
+        if 'std::vector' in str(t):
+            Addr = int(para['_M_impl']['_M_start'])
+
+            if Type is None:
+                s = str(t.template_argument(0))
+                Type = next((k for k, v in _CPU_MAP.items() if k in s), None)
 
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
             Size = Size_t if Size is None else min(Size, Size_t)
+                
+            if Type is not None:                
+                if LOG: PRINT('mem cpu read', Addr, Type, Size)
+                return read(Addr, Type, Size)  
 
-            if Type not in _CPU_MAP:
-                names = []
+            else:
+                results = {}
                 for f in t.fields():
                     if f.is_base_class or f.bitpos is None or not f.name:
                         continue;
+
                     ftype = f.type.strip_typedefs().unqualified()
-                    
                     if ftype.code == gdb.TYPE_CODE_PTR:
-                        names.append([f.name, 1])
+                        if LOG: PRINT(f'{Name}.{f.name}', gdb.TYPE_CODE_PTR)
+                        value = int(gdb.parse_and_eval(f'{Name}.{f.name}'))
+                        if LOG: PRINT('value', type(value), value)
+
                     else:
-                        for key in _CPU_MAP:
-                            if key == str(ftype):
-                                names.append([f.name, 0])
-                                break;
+                        if LOG: PRINT(f'{Name}.{f.name}')
+                        value = cpu(f'{Name}.{f.name}', None, Size)
+                        if LOG: PRINT('value1', value)
+                        value = np.asarray(value)
+                        if value.size == 1:
+                            value = value.item()
+                        if LOG: PRINT('value2', value)
+                    results[f.name] = value
 
-                if LOG: PRINT('Type', Type, 'names', names)
-                    
-                #names = [f.name for f in t.fields() if not f.is_base_class and f.bitpos is not None]
-                results = {name[0]: [] for name in names}
-
-
-                # elem = gdb.parse_and_eval(Name).type.strip_typedefs().template_argument(0).strip_typedefs()
-                # names = [f.name for f in elem.fields() if not f.is_base_class and f.bitpos is not None]
-                # results = {name: [None] * Size for name in names}
-
-                if LOG: PRINT('names', names)
-
-                for i in range(Size):
-                    result = cpu(f'{Name}[{i}]')
-                    for name in names:
-                        results[name][i] = result[name]
-
-                results = {name: np.array(vals) for name, vals in results.items()}
+                if LOG: PRINT('results', results)
                 return results
-            else:     
-                data_addr = int(para['_M_impl']['_M_start'])
-                return read(data_addr, Type, Size)    
 
-        elif str(t).startswith("std::array") or str(t).startswith("const std::array"):
-            data_addr = int(para['_M_elems'].address)
-            return read(data_addr, Type, Size)    
+        elif 'std::array' in str(t):
+            Addr = int(para['_M_elems'].address)
+            return read(Addr, Type, Size)    
 
-        elif str(t).startswith("std::pair") or str(t).startswith("const std::pair"):
-            data_addr = int(para.address)
-            return read(data_addr, Type, Size)    
+        elif 'std::pair' in str(t):
+            Addr = int(para.address)
+            return read(Addr, Type, Size)    
 
-        elif str(t).startswith("Eigen::Matrix") or str(t).startswith("const Eigen::Matrix"):
+        elif 'Eigen::Matrix' in str(t): # Eigen::Matrix
             n = int(t.template_argument(1))
             d = para['m_storage']['m_data']
-            data_addr = int(d['array'][0].address)
-            return read(data_addr, Type, Size) 
+            Addr = int(d['array'][0].address)
+            return read(Addr, Type, Size) 
 
         elif '::basic_string' in str(t): # std::string
             n = int(para['_M_string_length'])
@@ -336,7 +315,7 @@ def cpu(Name, Type=None, Size=None):
         else:
             if LOG: PRINT('t.fields()', t.fields())
 
-            results = []
+            results = {}
             for f in t.fields():
                 if LOG: PRINT('f.name', f.name)
                 if f.is_base_class or f.bitpos is None or not f.name:
@@ -346,23 +325,26 @@ def cpu(Name, Type=None, Size=None):
                 if ftype.code == gdb.TYPE_CODE_PTR:
                     if LOG: PRINT(f'{Name}.{f.name}', gdb.TYPE_CODE_PTR)
                     value = int(gdb.parse_and_eval(f'{Name}.{f.name}'))
-                    if LOG: PRINT('value', type(value), value)
+                    if LOG: PRINT('TYPE_CODE_STRUCT value1', type(value), value)
+
                 else:
                     if LOG: PRINT(f'{Name}.{f.name}')
                     value = cpu(f'{Name}.{f.name}', None, Size)
-                    if LOG: PRINT('value1', value)
                     value = np.asarray(value)
+                    if LOG: PRINT('value1', type(value), value)
                     if value.size == 1:
                         value = value.item()
-                    if LOG: PRINT('value2', value)
-                results.append([f.name, value])
+                        if LOG: PRINT('value1 => 1', type(value), value)
+                    if LOG: PRINT('TYPE_CODE_STRUCT value2', value)
+                    if LOG: PRINT('value2', type(value), value)
+                results[f.name] = value
 
-            if LOG: PRINT('results', results)
-            results = results[0] if len(results) == 1 else results
-            return np.array(results, dtype=object)
+            # results = {name: np.array(vals) for name, vals in results.items()}
+            if LOG: PRINT('results', type(results), results)
+            return results
 
     elif t.code == gdb.TYPE_CODE_INT: # 8
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT)
+        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
         if t.sizeof == 1:
             return np.int8(para) if t.is_signed else np.uint8(para)
         elif t.sizeof == 2:
@@ -385,9 +367,6 @@ def cpu(Name, Type=None, Size=None):
 
     return None
     
-#------------------------------------------------------------------------
-# gpu
-#------------------------------------------------------------------------
 
 _GPU_MAP = {
     'unsigned char':            np.uint8,
@@ -402,7 +381,7 @@ _GPU_MAP = {
     'double':                   np.float64,       
 }
 
-def gpu(Name, Type=None, Size=12, Step = 1):  
+def gpu(Name, Type=None, Size=None, Step = 1):  
     para = gdb.parse_and_eval(Name)
     t = para.type.strip_typedefs()
 
@@ -411,18 +390,15 @@ def gpu(Name, Type=None, Size=12, Step = 1):
         t = para.type.strip_typedefs()   
 
     if t.code == gdb.TYPE_CODE_PTR: # 1 
-        Type = str(t.target()) if Type is None else Type
-        
-        type_t = None
-        for name, dtype in _GPU_MAP.items():
-            if name in Type:
-                type_t = dtype
-                break
+        if Type is None:
+            Type = str(t.target())
+
+        type_t = next((v for k, v in _GPU_MAP.items() if k in Type), None)
 
         if type_t is None:
             PRINT(f'mem do not support {Type} fail')
             return None;
-        
+            
         size_t = Size if isinstance(Size, (list, tuple)) else [Size]
 
         data_size = int(np.prod(size_t, dtype=np.int64))
@@ -523,7 +499,6 @@ def gpu(Name, Type=None, Size=12, Step = 1):
 
     return None
     
-
 #------------------------------------------------------------------------
 # mem
 #------------------------------------------------------------------------
@@ -538,14 +513,15 @@ def _mem(Name, Type=None, Size=None, Step=1):
         'i':                    'int',
         'ull':                  'unsigned long long',
         'ul':                   'unsigned long',
-        'f':                    'f',
+        'f':                    'float',
         'd':                    'double',
     }
 
     if Type is not None and Type in _FULL_TYPE:
         Type = _FULL_TYPE[Type]  
     
-    Size = np.atleast_1d(np.asarray(Size))
+    if Size is not None:
+        Size = np.atleast_1d(np.asarray(Size))
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 
@@ -608,7 +584,7 @@ def _mem(Name, Type=None, Size=None, Step=1):
     else:        
         if LOG: PRINT('mem gpu device')
         data = gpu(Name, Type, Size, Step)
-        if LOG: PRINT('mem gpu device save', f'{Path}/{Name}.npy')
+        if LOG: PRINT('mem gpu device save', type(data), f'{Path}/{Name}.npy')
         np.save(f'{Path}/{Name}.npy', data) 
         return data
 
@@ -626,82 +602,62 @@ def mem(Name, Type=None, Size=None, Step=1):
     
     return None
 
-'''
-#------------------------------------------------------------------------
-Credit balance is too low
-unset ANTHROPIC_API_KEY
-echo "[$ANTHROPIC_API_KEY]"
-/login "Claude account with subscription"
-/status
-/usage
+# Value  Constant                     Meaning
+# -1     TYPE_CODE_BITSTRING          Bit string (deprecated, kept for compatibility)
+# 1      TYPE_CODE_PTR                Pointer, e.g. T*
+# 2      TYPE_CODE_ARRAY              Array, e.g. T[N]
+# 3      TYPE_CODE_STRUCT             Struct or C++ class
+# 4      TYPE_CODE_UNION              Union
+# 5      TYPE_CODE_ENUM               Enumeration
+# 6      TYPE_CODE_FLAGS              Bit-flags register type (e.g. eflags)
+# 7      TYPE_CODE_FUNC               Function type
+# 8      TYPE_CODE_INT                Integer (int, long, size_t, ...)
+# 9      TYPE_CODE_FLT                Floating point (float, double)
+# 10     TYPE_CODE_VOID               void
+# 11     TYPE_CODE_SET                Set type (Pascal / Modula-2)
+# 12     TYPE_CODE_RANGE              Range type (array index bounds, etc.)
+# 13     TYPE_CODE_STRING             String type (Fortran-style, NOT char*)
+# 14     TYPE_CODE_ERROR              Unrecognized / corrupt debug info
+# 15     TYPE_CODE_METHOD             C++ member function type
+# 16     TYPE_CODE_METHODPTR          Pointer to member function, void (T::*)()
+# 17     TYPE_CODE_MEMBERPTR          Pointer to data member, int T::*
+# 18     TYPE_CODE_REF                C++ lvalue reference, T&
+# 19     TYPE_CODE_RVALUE_REF         C++ rvalue reference, T&&
+# 20     TYPE_CODE_CHAR               Character type, char
+# 21     TYPE_CODE_BOOL               Boolean, bool
+# 22     TYPE_CODE_COMPLEX            Complex number, _Complex
+# 23     TYPE_CODE_TYPEDEF            typedef / using alias (not yet stripped)
+# 24     TYPE_CODE_NAMESPACE          C++ namespace
+# 25     TYPE_CODE_DECFLOAT           Decimal float (_Decimal64, etc.)
+# 26     TYPE_CODE_MODULE             Module (Fortran)
+# 27     TYPE_CODE_INTERNAL_FUNCTION  GDB internal convenience function ($_strlen, ...)
+# 28     TYPE_CODE_XMETHOD            Python-defined extension method (xmethod)
+# 29     TYPE_CODE_FIXED_POINT        Fixed-point number type
+# 30     TYPE_CODE_NAMELIST           Fortran namelist
 
-#------------------------------------------------------------------------
-Jul 15 2026:
+# python3 -m mem mem.py
 
--exec source /home/roots/mem/pp.py
+# Credit balance is too low
+# unset ANTHROPIC_API_KEY
+# echo "[$ANTHROPIC_API_KEY]"
+# /login "Claude account with subscription"
+# /status
+# /usage
 
-import os
-import sys
-import importlib
+# r = subprocess.run(
+#     # sudo sysctl kernel.yama.ptrace_scope=0
+#     ["sudo", "sysctl", "kernel.yama.ptrace_scope=0"]#, capture_output=True, text=True
+# )
+# if r.returncode != 0:
+#     print("sudo sysctl kernel.yama.ptrace_scope=0 fail")  
+#     sys.exit()
 
-mem_dir = os.path.abspath('/home/roots/mem')
-if mem_dir not in sys.path: sys.path.insert(0, mem_dir)
-
-import mem
-importlib.reload(mem)
-
-#from mem import cpu, gpu, imtool, plot, addr
-from mem import*
-
-addr('A')
-img = cpu('inputImg', 'uc', [480, 640])
-imtool(img)
-
-#------------------------------------------------------------------------
-Jul 16 2026:
-
-1)
-~/.vscode/extensions
-
-extension.js
-package.json
-
-node --version
-npm --version
-
-sudo npm install -g @vscode/vsce
-
-bash install.sh
-
-vsce package --allow-missing-repository --skip-license
-code --uninstall-extension local.f8comma
-code --install-extension f8comma-0.0.1.vsix
-
-Or:
-Ctrl + Shit + P
-Extensions: Install from VSIX...
-
-2)
-/home/roots/.config/Code/User/keybindings.json
-
-    {
-    	"key": "f7",
-    	"command": "editor.debug.action.selectionToRepl",
-    	"when": "editorHasSelection && inDebugMode"
-    },
-    {
-        "key": "f8",
-        "command": "f8run.comma",
-        "when": "editorTextFocus && inDebugMode"
-    }
-
-3)
-Ctrl + Shift + P
-Reload Window
-
-Or:
-Ctrl + Shift + P
-Extension Development Host
-
-#------------------------------------------------------------------------
-'''
+# node --version
+# npm --version
+# sudo npm install -g @vscode/vsce
+# ~/.vscode/extensions
+# ~/.config/Code/User/keybindings.json
+# Ctrl + Shift + P
+# Reload Window
+# Extension Development Host
+# Extensions: Install from VSIX...

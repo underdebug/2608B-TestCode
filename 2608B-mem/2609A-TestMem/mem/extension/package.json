@@ -90,21 +90,14 @@
           "when": "editorHasDefinitionProvider && editorTextFocus && !isInEmbeddedEditor"
       },
       {
-          "key": "f4",
-          "command": "runCommands",
-          "args": {
-              "commands": [
-                  "workbench.action.debug.stop",
-                  {
-                      "command": "workbench.action.tasks.runTask",
-                      "args": "build Test"
-                  }
-              ]
-          }
+          "key": "f6",
+          "command": "cmake.build",
+          "when": "!inDebugMode"
       },
       {
-          "key": "f6",
-          "command": "workbench.action.debug.stop"
+          "key": "shift+f6",
+          "command": "cmake.clean",
+          "when": "!inDebugMode"
       },
       {
         "key": "f7",
