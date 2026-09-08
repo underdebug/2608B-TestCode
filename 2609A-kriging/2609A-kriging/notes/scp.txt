@@ -1,0 +1,13 @@
+
+joey upload:
+scp -r ./ roots@mingjie:/home/roots/share
+
+joey download:
+scp -r roots@mingjie:/home/roots/share /home/roots/share
+
+
+mingjie upload:
+scp -r ./ roots@joey:/home/roots/share
+
+mingjie download:
+scp -r roots@joey:/home/roots/share /home/roots/share

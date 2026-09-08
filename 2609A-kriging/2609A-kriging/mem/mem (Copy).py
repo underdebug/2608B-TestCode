@@ -434,21 +434,21 @@ def gpu(Name, Type=None, Size=None, Step = 1):
                 PRINT('malloc & cudaMemcpy fail:', Name, Type, Size)
                 PRINT('pga fail:', e)       
 
-        elif Step > 1 and len(Size) > 1:
-            data = np.empty(Size, dtype=type_t)
+        elif Step > 1 and len(shape) > 1:
+            data = np.empty(shape, dtype=type_t)
 
-            for i in range(0, Size[0], Step):
-                for j in range(0, Size[1], Step):
-                    data[i, j] = (para + i * int(Size[1]) + j).dereference()
+            for i in range(0, shape[0], Step):
+                for j in range(0, shape[1], Step):
+                    data[i, j] = (para + i * shape[1] + j).dereference()
 
                     for di in range(Step): 
                         ii = i + di
-                        if ii >= Size[0]:
+                        if ii >= shape[0]:
                             continue
 
                         for dj in range(Step):
                             jj = j + dj
-                            if jj >= Size[1]:
+                            if jj >= shape[1]:
                                 continue
                             
                             data[ii, jj] = data[i, j];
@@ -535,7 +535,7 @@ def _mem(Name, Type=None, Size=None, Step=1):
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 
-    if Type is None and Size is None:
+    if Type == None and Size == None:
         if LOG: PRINT('mem cpu')
         data = cpu(Name, Type, Size)
         if LOG: PRINT('type(data)', type(data))

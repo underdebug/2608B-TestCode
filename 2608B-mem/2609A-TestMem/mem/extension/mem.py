@@ -26,6 +26,7 @@ import os
 import sys
 import numpy as np
 import inspect
+import math
 
 LOG = 1
 
@@ -93,18 +94,15 @@ _CPU_MAP = {
 }
 
 def read(Addr, Type, Size):
-    shape = Size if isinstance(Size, (list, tuple)) else [Size]
-    data_size = 1
-    for s in shape:
-        data_size *= int(s)
+    data_size = math.prod(Size)
     data_size *= np.dtype(_CPU_MAP[Type]).itemsize
 
     inferior = gdb.selected_inferior()
     raw = inferior.read_memory(Addr, data_size)
     data = np.frombuffer(raw, dtype=_CPU_MAP[Type])
 
-    if len(shape) > 1:
-        data = data.reshape(shape)
+    if len(Size) > 1:
+        data = data.reshape(Size)
     return data
 
 def cpu(Name, Type=None, Size=None):   
@@ -128,7 +126,9 @@ def cpu(Name, Type=None, Size=None):
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
-            Size = Size_t if Size is None else min(Size, Size_t)
+
+            if Size is None or (len(Size) == 1 and Size_t < Size):
+                Size = Size_t
 
             return read(Addr, Type, Size)   
 
@@ -262,8 +262,10 @@ def cpu(Name, Type=None, Size=None):
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
-            Size = Size_t if Size is None else min(Size, Size_t)
-                
+
+            if Size is None or (len(Size) == 1 and Size_t < Size):
+                Size = Size_t
+
             if Type is not None:                
                 if LOG: PRINT('mem cpu read', Addr, Type, Size)
                 return read(Addr, Type, Size)  
@@ -378,7 +380,8 @@ _GPU_MAP = {
     'unsigned long long':       np.uint64,
     'unsigned long':            np.dtype('L'),
     'float':                    np.float32,
-    'double':                   np.float64,       
+    'double':                   np.float64,  
+    'real_t':                   np.float64,     
 }
 
 def gpu(Name, Type=None, Size=None, Step = 1):  
@@ -398,10 +401,10 @@ def gpu(Name, Type=None, Size=None, Step = 1):
         if type_t is None:
             PRINT(f'mem do not support {Type} fail')
             return None;
-            
-        size_t = Size if isinstance(Size, (list, tuple)) else [Size]
 
-        data_size = int(np.prod(size_t, dtype=np.int64))
+        if LOG: PRINT('Size', Size)
+            
+        data_size = int(np.prod(Size, dtype=np.int64))
         data_size *= np.dtype(type_t).itemsize
 
         PRINT('Type', Type)
@@ -409,38 +412,43 @@ def gpu(Name, Type=None, Size=None, Step = 1):
         if '@' not in str(t.target()):
             d_addr = int(para)
 
-            expr = f"(unsigned char*)malloc({data_size})"
-            if LOG: PRINT('expr', expr)
+            try:
+                expr = f"(unsigned char*)malloc({data_size})"
+                if LOG: PRINT('expr', expr)
 
-            h_addr = int(gdb.parse_and_eval(expr))
+                h_addr = int(gdb.parse_and_eval(expr))
 
-            if LOG: PRINT('h_addr', h_addr, 'd_addr', d_addr, 'data_size', data_size)
+                if LOG: PRINT('h_addr', h_addr, 'd_addr', d_addr, 'data_size', data_size)
 
-            expr = f"((int (*)(void*, const void*, size_t, int))cudaMemcpy)((void*){h_addr}, (void*){d_addr}, {data_size}, cudaMemcpyDeviceToHost)"
-            ret = gdb.parse_and_eval(expr)
+                expr = f"((int (*)(void*, const void*, size_t, int))cudaMemcpy)((void*){h_addr}, (void*){d_addr}, {data_size}, cudaMemcpyDeviceToHost)"
+                ret = gdb.parse_and_eval(expr)
 
-            inferior = gdb.selected_inferior()
-            raw = inferior.read_memory(h_addr, data_size)
-            data = np.frombuffer(raw, dtype=type_t).copy()
+                inferior = gdb.selected_inferior()
+                raw = inferior.read_memory(h_addr, data_size)
+                data = np.frombuffer(raw, dtype=type_t).copy()
 
-            expr = f"((void(*)(void*))free)((void*){h_addr})"
-            gdb.parse_and_eval(expr)
+                expr = f"((void(*)(void*))free)((void*){h_addr})"
+                gdb.parse_and_eval(expr)
 
-        elif Step > 1 and len(shape) > 1:
-            data = np.empty(shape, dtype=type_t)
+            except gdb.error as e:
+                PRINT('malloc & cudaMemcpy fail:', Name, Type, Size)
+                PRINT('pga fail:', e)       
 
-            for i in range(0, shape[0], Step):
-                for j in range(0, shape[1], Step):
-                    data[i, j] = (para + i * shape[1] + j).dereference()
+        elif Step > 1 and len(Size) > 1:
+            data = np.empty(Size, dtype=type_t)
+
+            for i in range(0, Size[0], Step):
+                for j in range(0, Size[1], Step):
+                    data[i, j] = (para + i * int(Size[1]) + j).dereference()
 
                     for di in range(Step): 
                         ii = i + di
-                        if ii >= shape[0]:
+                        if ii >= Size[0]:
                             continue
 
                         for dj in range(Step):
                             jj = j + dj
-                            if jj >= shape[1]:
+                            if jj >= Size[1]:
                                 continue
                             
                             data[ii, jj] = data[i, j];
@@ -469,10 +477,12 @@ def gpu(Name, Type=None, Size=None, Step = 1):
                 total_data[i] = (para + total_offset).cast(total_type.pointer()).dereference()
         
             data = total_data.view(type_t)
+            if LOG: PRINT('GPU data shape', data.shape)
 
 
-        if len(size_t) > 1:
-            data = data.reshape(size_t)
+        if LOG: PRINT('Size.size', Size.size, 'len(Size)', len(Size))
+        if len(Size) > 1:
+            data = data.reshape(Size)
         return data
   
     elif t.code == gdb.TYPE_CODE_INT: # 8
@@ -525,7 +535,7 @@ def _mem(Name, Type=None, Size=None, Step=1):
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 
-    if Type == None and Size == None:
+    if Type is None and Size is None:
         if LOG: PRINT('mem cpu')
         data = cpu(Name, Type, Size)
         if LOG: PRINT('type(data)', type(data))
@@ -547,6 +557,7 @@ def _mem(Name, Type=None, Size=None, Step=1):
         sym, is_field  = gdb.lookup_symbol("cudaPointerGetAttributes")
         if LOG: PRINT('sym', sym)
 
+        t = 0
         try:
             buf = int(gdb.parse_and_eval("(void *) malloc(64)"))
 
@@ -559,30 +570,29 @@ def _mem(Name, Type=None, Size=None, Step=1):
             if LOG: PRINT({0: "host-malloc", 1: "pinned", 2: "device", 3: "managed"}.get(t, "?"))
 
             gdb.parse_and_eval(f"(void) free((void *) {buf:#x})")
-
-            if t in [2, 3]:
-                if LOG: PRINT('mem gpu host')
-                data = gpu(Name, Type, Size, Step)
-                if LOG: PRINT('mem gpu host save', f'{Path}/{Name}.npy')
-                np.save(f'{Path}/{Name}.npy', data) 
-                return data
-            else:
-                if LOG: PRINT('mem cpu')
-                data = cpu(Name, Type, Size)
-                if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
-                np.save(f'{Path}/{Name}.npy', data) 
-                return data
-                
+        
         except gdb.error as e:
-            if LOG: PRINT('pga failed:', e)
-            if LOG: PRINT('mem cpu', Name, Type, Size)
+            if LOG: PRINT('malloc & cudaPointerGetAttributes fail', Name, Type, Size)
+            if LOG: PRINT('pga fail:', e)            
+
+        if LOG: PRINT('t [2 3 gpu]', t)
+
+        if t in [2, 3]:
+            if LOG: PRINT('mem gpu host')
+            data = gpu(Name, Type, Size, Step)
+            if LOG: PRINT('mem gpu host save', f'{Path}/{Name}.npy')
+            np.save(f'{Path}/{Name}.npy', data) 
+            return data
+
+        else:
+            if LOG: PRINT('mem cpu')
             data = cpu(Name, Type, Size)
-            if LOG: PRINT('data', type(data), data)
             if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
             np.save(f'{Path}/{Name}.npy', data) 
             return data
+
     else:        
-        if LOG: PRINT('mem gpu device')
+        if LOG: PRINT('mem gpu device kernel')
         data = gpu(Name, Type, Size, Step)
         if LOG: PRINT('mem gpu device save', type(data), f'{Path}/{Name}.npy')
         np.save(f'{Path}/{Name}.npy', data) 
@@ -596,7 +606,10 @@ def mem(Name, Type=None, Size=None, Step=1):
     else:
         try:
             data = _mem(Name, Type, Size, Step)
-        except Exception:
+
+        except gdb.error as e:
+            PRINT('mem fail:', Name, Type, Size)
+            PRINT('pga fail:', e)    
             data = None
         return data
     
