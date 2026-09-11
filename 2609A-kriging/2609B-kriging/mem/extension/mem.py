@@ -86,8 +86,8 @@ _CPU_MAP = {
     'short':                    np.int16,
     'unsigned int':             np.uint32,        
     'int':                      np.int32,
-    'unsigned long':            np.dtype('L'),
     'unsigned long long':       np.uint64,
+    'unsigned long':            np.dtype('L'),
     'float':                    np.float32,
     'double':                   np.float64,       
 }
@@ -399,10 +399,12 @@ def gpu(Name, Type=None, Size=None, Step = 1):
             PRINT(f'mem do not support {Type} fail')
             return None;
             
-        data_size = int(np.prod(Size, dtype=np.int64))
+        size_t = Size if isinstance(Size, (list, tuple)) else [Size]
+
+        data_size = int(np.prod(size_t, dtype=np.int64))
         data_size *= np.dtype(type_t).itemsize
 
-        if LOG: PRINT('Type', Type)
+        PRINT('Type', Type)
         
         if '@' not in str(t.target()):
             d_addr = int(para)
@@ -468,13 +470,13 @@ def gpu(Name, Type=None, Size=None, Step = 1):
         
             data = total_data.view(type_t)
 
-        if LOG: PRINT('Size =', Size, 'len(Size)', len(Size))
-        if len(Size) > 1:
-            data = data.reshape(Size)
+
+        if len(size_t) > 1:
+            data = data.reshape(size_t)
         return data
   
     elif t.code == gdb.TYPE_CODE_INT: # 8
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
+        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT)
         if t.sizeof == 1:
             return np.int8(para) if t.is_signed else np.uint8(para)
         elif t.sizeof == 2:
@@ -485,7 +487,6 @@ def gpu(Name, Type=None, Size=None, Step = 1):
             return np.int64(para) if t.is_signed else np.uint64(para)
 
     elif t.code == gdb.TYPE_CODE_FLT: # 9
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
         if t.sizeof == 4:
             return np.float32(para)
         elif t.sizeof == 8:
