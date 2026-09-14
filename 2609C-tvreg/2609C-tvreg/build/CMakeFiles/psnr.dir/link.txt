@@ -1,1 +1,0 @@
-/usr/bin/c++ -O0 -g3 -fsanitize=address,undefined -DTV_DEBUG -fsanitize=address,undefined CMakeFiles/psnr.dir/psnr.cpp.o -o /home/roots/develop/upload/2608B-TestCode/2609C-tvreg/2609C-tvreg/psnr 
