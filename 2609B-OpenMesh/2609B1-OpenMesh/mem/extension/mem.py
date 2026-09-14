@@ -26,18 +26,13 @@ import os
 import sys
 import numpy as np
 import inspect
-import math
 
-LOG = 0 # 9/14 2026
+LOG = 1
 
-np.set_printoptions(linewidth=200)
+np.set_printoptions(linewidth=256)
 np.set_printoptions(suppress=True)
-
-if "__file__" in globals():
-    PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-else:
-    PATH = os.path.abspath('mem/data')
-os.makedirs(PATH, exist_ok=True)
+Path = 'mem/data'
+os.makedirs(Path, exist_ok=True) 
 
 def PRINT(*args, **kwargs):
     print(inspect.currentframe().f_back.f_lineno, *args, **kwargs)
@@ -50,7 +45,7 @@ def get_pids(name):
         try:
             with open(f"/proc/{pid}/cmdline", "rb") as f:
                 parts = f.read().split(b"\x00")
-            exe = os.PATH.basename(parts[0].decode(errors="ignore"))
+            exe = os.path.basename(parts[0].decode(errors="ignore"))
             if exe == name:
                 pids.append(int(pid))
         except (FileNotFoundError, PermissionError):
@@ -91,21 +86,25 @@ _CPU_MAP = {
     'short':                    np.int16,
     'unsigned int':             np.uint32,        
     'int':                      np.int32,
-    'unsigned long':            np.dtype('L'),
     'unsigned long long':       np.uint64,
+    'unsigned long':            np.dtype('L'),
     'float':                    np.float32,
     'double':                   np.float64,       
 }
 
 def read(Addr, Type, Size):
-    data_size = math.prod(int(s) for s in (Size if isinstance(Size, (list, tuple)) else [Size]))
+    shape = Size if isinstance(Size, (list, tuple)) else [Size]
+    data_size = 1
+    for s in shape:
+        data_size *= int(s)
     data_size *= np.dtype(_CPU_MAP[Type]).itemsize
 
     inferior = gdb.selected_inferior()
     raw = inferior.read_memory(Addr, data_size)
     data = np.frombuffer(raw, dtype=_CPU_MAP[Type])
 
-    data = data.reshape(Size)
+    if len(shape) > 1:
+        data = data.reshape(shape)
     return data
 
 def cpu(Name, Type=None, Size=None):   
@@ -169,10 +168,9 @@ def cpu(Name, Type=None, Size=None):
         else:
             if Type is None: # Type:None like int*
                 Type = next((k for k, v in _CPU_MAP.items() if k in str(t)), None)
-   
+        
             if Type is not None: # like float32*
                 Addr = int(para)
-                if LOG: PRINT('read', Addr, Type, Size)
                 return read(Addr, Type, Size)
 
             else:
@@ -246,7 +244,7 @@ def cpu(Name, Type=None, Size=None):
                     results[i] = cpu(f'{Name}[{i}]')
                 return results;
 
-            elif len(Size) == 2:
+            elif len(Size) == 2:   
                 results = [None] * (Size[0], Size[1])
                 for i in range(Size[0]):
                     for j in range(Size[1]):
@@ -256,82 +254,43 @@ def cpu(Name, Type=None, Size=None):
     elif t.code == gdb.TYPE_CODE_STRUCT: # 3
         if 'std::vector' in str(t):
             Addr = int(para['_M_impl']['_M_start'])
-            
-            if LOG: PRINT('s', str(t.template_argument(0).strip_typedefs()))
+
             if Type is None:
-                s = str(t.template_argument(0).strip_typedefs())
-                Type = next((k for k, v in _CPU_MAP.items() if s.startswith(k)), None)
+                s = str(t.template_argument(0))
+                Type = next((k for k, v in _CPU_MAP.items() if k in s), None)
 
             start = para['_M_impl']['_M_start']
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
             Size = Size_t if Size is None else min(Size, Size_t)
-            if LOG: PRINT('Addr', Addr, 'Type', Type, 'Size', Size)
                 
             if Type is not None:                
+                if LOG: PRINT('mem cpu read', Addr, Type, Size)
                 return read(Addr, Type, Size)  
-
-            elif 'std::pair' in str(t.template_argument(0).strip_typedefs()):
-                pair_type = t.template_argument(0).strip_typedefs()
-                first_t = str(pair_type.template_argument(0).strip_typedefs())
-                second_t = str(pair_type.template_argument(1).strip_typedefs())
-                first_dtype = next((v for k, v in _CPU_MAP.items() if first_t.startswith(k)), None)
-                second_dtype = next((v for k, v in _CPU_MAP.items() if second_t.startswith(k)), None)
-
-                firsts = []
-                seconds = []
-                for i in range(Size):
-                    firsts.append(start[i]['first'])
-                    seconds.append(start[i]['second'])
-
-                results = [np.array(firsts, dtype=first_dtype), np.array(seconds, dtype=second_dtype)]
-                results = np.asarray(results)
-
-                if LOG: PRINT('type(results)', type(results), 'results', results)
-                return results
 
             else:
                 results = {}
-                for i in range(Size):
-                    elem = start[i]
+                for f in t.fields():
+                    if f.is_base_class or f.bitpos is None or not f.name:
+                        continue;
 
-                    for f in t.template_argument(0).strip_typedefs().fields():
-                        # if f.is_base_class or f.bitpos is None or not f.name:
-                        #     continue
+                    ftype = f.type.strip_typedefs().unqualified()
+                    if ftype.code == gdb.TYPE_CODE_PTR:
+                        if LOG: PRINT(f'{Name}.{f.name}', gdb.TYPE_CODE_PTR)
+                        value = int(gdb.parse_and_eval(f'{Name}.{f.name}'))
+                        if LOG: PRINT('value', type(value), value)
 
-                        ftype = f.type.strip_typedefs().unqualified()
-                        if ftype.code == gdb.TYPE_CODE_PTR:
-                            fvalue = int(elem[f.name])
-                            results.setdefault(f.name, []).append(fvalue)
+                    else:
+                        if LOG: PRINT(f'{Name}.{f.name}')
+                        value = cpu(f'{Name}.{f.name}', None, Size)
+                        if LOG: PRINT('value1', value)
+                        value = np.asarray(value)
+                        if value.size == 1:
+                            value = value.item()
+                        if LOG: PRINT('value2', value)
+                    results[f.name] = value
 
-                        elif ftype.code == gdb.TYPE_CODE_BOOL:
-                            fvalue = bool(elem[f.name])
-                            results.setdefault(f.name, []).append(fvalue)
-
-                        elif ftype.code == gdb.TYPE_CODE_FLT:
-                            fvalue = float(elem[f.name])
-                            results.setdefault(f.name, []).append(fvalue)
-                       
-                        elif ftype.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM):
-                            fvalue = int(elem[f.name])
-                            results.setdefault(f.name, []).append(fvalue)
-                        
-                        elif t.code == gdb.TYPE_CODE_ARRAY: 
-                            fvalue = cpu(f'{Name}[{i}].{f.name}', None, None)
-                            results.setdefault(f.name, []).append(fvalue)
-
-                        # else:
-                        #     fvalue = np.asarray(elem[f.name])
-                        #     if fvalue.size == 1:
-                        #         fvalue = fvalue.item()
-
-                        # if LOG: PRINT(f'{Name}[{i}].{f.name}', type(fvalue), fvalue)
-                        # results.setdefault(f.name, []).append(fvalue)
-
-                results = {k: np.array(v) for k, v in results.items()}
-                results = np.asarray(results)
-
-                if LOG: PRINT('type(results)', type(results), 'results', results)
+                if LOG: PRINT('results', results)
                 return results
 
         elif 'std::array' in str(t):
@@ -440,10 +399,12 @@ def gpu(Name, Type=None, Size=None, Step = 1):
             PRINT(f'mem do not support {Type} fail')
             return None;
             
-        data_size = int(np.prod(Size, dtype=np.int64))
+        size_t = Size if isinstance(Size, (list, tuple)) else [Size]
+
+        data_size = int(np.prod(size_t, dtype=np.int64))
         data_size *= np.dtype(type_t).itemsize
 
-        if LOG: PRINT('Type', Type)
+        PRINT('Type', Type)
         
         if '@' not in str(t.target()):
             d_addr = int(para)
@@ -509,13 +470,13 @@ def gpu(Name, Type=None, Size=None, Step = 1):
         
             data = total_data.view(type_t)
 
-        if LOG: PRINT('Size =', Size, 'len(Size)', len(Size))
-        if len(Size) > 1:
-            data = data.reshape(Size)
+
+        if len(size_t) > 1:
+            data = data.reshape(size_t)
         return data
   
     elif t.code == gdb.TYPE_CODE_INT: # 8
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
+        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT)
         if t.sizeof == 1:
             return np.int8(para) if t.is_signed else np.uint8(para)
         elif t.sizeof == 2:
@@ -526,7 +487,6 @@ def gpu(Name, Type=None, Size=None, Step = 1):
             return np.int64(para) if t.is_signed else np.uint64(para)
 
     elif t.code == gdb.TYPE_CODE_FLT: # 9
-        if LOG: PRINT('t.code', gdb.TYPE_CODE_INT, 't.sizeof', t.sizeof)
         if t.sizeof == 4:
             return np.float32(para)
         elif t.sizeof == 8:
@@ -562,7 +522,6 @@ def _mem(Name, Type=None, Size=None, Step=1):
     
     if Size is not None:
         Size = np.atleast_1d(np.asarray(Size))
-        if len(Size) == 1: Size = Size[0]
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 
@@ -570,8 +529,8 @@ def _mem(Name, Type=None, Size=None, Step=1):
         if LOG: PRINT('mem cpu')
         data = cpu(Name, Type, Size)
         if LOG: PRINT('type(data)', type(data))
-        if LOG: PRINT('mem cpu save', f'{PATH}/{Name}.npy')
-        np.save(f'{PATH}/{Name}.npy', data) 
+        if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
+        np.save(f'{Path}/{Name}.npy', data) 
         return data
 
     if LOG: PRINT('Name', Name)
@@ -604,14 +563,14 @@ def _mem(Name, Type=None, Size=None, Step=1):
             if t in [2, 3]:
                 if LOG: PRINT('mem gpu host')
                 data = gpu(Name, Type, Size, Step)
-                if LOG: PRINT('mem gpu host save', f'{PATH}/{Name}.npy')
-                np.save(f'{PATH}/{Name}.npy', data) 
+                if LOG: PRINT('mem gpu host save', f'{Path}/{Name}.npy')
+                np.save(f'{Path}/{Name}.npy', data) 
                 return data
             else:
                 if LOG: PRINT('mem cpu')
                 data = cpu(Name, Type, Size)
-                if LOG: PRINT('mem cpu save', f'{PATH}/{Name}.npy')
-                np.save(f'{PATH}/{Name}.npy', data) 
+                if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
+                np.save(f'{Path}/{Name}.npy', data) 
                 return data
                 
         except gdb.error as e:
@@ -619,14 +578,14 @@ def _mem(Name, Type=None, Size=None, Step=1):
             if LOG: PRINT('mem cpu', Name, Type, Size)
             data = cpu(Name, Type, Size)
             if LOG: PRINT('data', type(data), data)
-            if LOG: PRINT('mem cpu save', f'{PATH}/{Name}.npy')
-            np.save(f'{PATH}/{Name}.npy', data) 
+            if LOG: PRINT('mem cpu save', f'{Path}/{Name}.npy')
+            np.save(f'{Path}/{Name}.npy', data) 
             return data
     else:        
         if LOG: PRINT('mem gpu device')
         data = gpu(Name, Type, Size, Step)
-        if LOG: PRINT('mem gpu device save', type(data), f'{PATH}/{Name}.npy')
-        np.save(f'{PATH}/{Name}.npy', data) 
+        if LOG: PRINT('mem gpu device save', type(data), f'{Path}/{Name}.npy')
+        np.save(f'{Path}/{Name}.npy', data) 
         return data
 
     return None
