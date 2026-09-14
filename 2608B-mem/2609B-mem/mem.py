@@ -562,7 +562,6 @@ def _mem(Name, Type=None, Size=None, Step=1):
     
     if Size is not None:
         Size = np.atleast_1d(np.asarray(Size))
-        if len(Size) == 1: Size = Size[0]
 
     if LOG: PRINT('Type', Type, 'Size', Size)
 

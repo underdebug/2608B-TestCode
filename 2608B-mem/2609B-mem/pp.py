@@ -35,5 +35,12 @@ print('h_data1', h_data1)
 d_data1 = mem('d_data1', 'float', 12)
 print('d_data1', d_data1)
 
+
+pairVec = mem('pairVec', None, None)
+print('pairVec', pairVec)
+
+pairVec = mem('pairVec', None, 12)
+print('pairVec', pairVec)
+
 print('test finish')
 
