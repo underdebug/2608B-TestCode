@@ -28,7 +28,7 @@ import numpy as np
 import inspect
 import math
 
-LOG = 1 # 9/14 2026
+LOG = 0 # 9/25 2026
 
 np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
