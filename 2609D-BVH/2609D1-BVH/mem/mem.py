@@ -349,7 +349,7 @@ def cpu(Name, Type=None, Size=None):
                             fvalue = int(struct[field.name])
                             results.setdefault(field.name, []).append(fvalue)
                         
-                        elif ftype.code == gdb.TYPE_CODE_ARRAY: 
+                        elif ftype.code == gdb.TYPE_CODE_ARRAY:
                             fvalue = int(struct[field.name].address)
                             results.setdefault(field.name, []).append(fvalue)
 
@@ -376,6 +376,10 @@ def cpu(Name, Type=None, Size=None):
                                     fvalue2 = int(struct2[field2.name])
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
                                 
+                                elif ftype2.code == gdb.TYPE_CODE_ARRAY:
+                                    fvalue2 = int(struct2[field2.name].address)
+                                    results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
+
                                 elif ftype2.code == gdb.TYPE_CODE_STRUCT:
                                     struct3 = struct2[field2.name]
 
@@ -398,8 +402,10 @@ def cpu(Name, Type=None, Size=None):
                                         elif ftype3.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM):
                                             fvalue3 = int(struct3[field3.name])
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
-                                        else:
-                                            if LOG: PRINT(f'{field.name}.{field2.name}.{field3.name}({ftype3.code}): fail')
+
+                                        elif ftype3.code == gdb.TYPE_CODE_ARRAY:
+                                            fvalue3 = int(struct3[field3.name].address)
+                                            results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
 
                 results = {k: np.array(v) for k, v in results.items()}
                 # results = np.asarray(results)
