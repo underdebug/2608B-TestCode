@@ -1,0 +1,7 @@
+
+delete .swp file in vscode
+vim ~/.vimrc
+set noswapfile
+
+---------------------------------------------------------------
+https://getreuer.info/posts/tvreg/index.html
