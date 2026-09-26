@@ -28,7 +28,7 @@ import numpy as np
 import inspect
 import math
 
-LOG = 0 # 9/25 2026
+LOG = 1 # 9/26 2026
 
 np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
@@ -298,6 +298,10 @@ def cpu(Name, Type=None, Size=None):
             finish = para['_M_impl']['_M_finish']
             Size_t = int(finish - start)
 
+            if Size_t == 0:
+                if LOG: PRINT('gdb.TYPE_CODE_STRUCT, Size_t', Size_t, 'Size', Size)
+                return np.array([])
+
             if LOG: PRINT('gdb.TYPE_CODE_STRUCT, Size_t =', Size_t, ',Size >', Size)
             Size = normalizeSize(Size_t, Size)
             if LOG: PRINT('gdb.TYPE_CODE_STRUCT, Addr =', Addr, ',Type =', Type, ',Size <', Size)
@@ -333,77 +337,77 @@ def cpu(Name, Type=None, Size=None):
                         ftype = field.type.strip_typedefs().unqualified()
                         if LOG: PRINT('field.name', field.name, 'ftype.code', ftype.code)
 
-                        if ftype.code == gdb.TYPE_CODE_PTR:
+                        if ftype.code == gdb.TYPE_CODE_PTR: # 1
                             fvalue = int(struct[field.name])
                             results.setdefault(field.name, []).append(fvalue)
 
-                        elif ftype.code == gdb.TYPE_CODE_BOOL:
+                        elif ftype.code == gdb.TYPE_CODE_BOOL: # 21
                             fvalue = bool(struct[field.name])
                             results.setdefault(field.name, []).append(fvalue)
 
-                        elif ftype.code == gdb.TYPE_CODE_FLT:
+                        elif ftype.code == gdb.TYPE_CODE_FLT: # 9
                             fvalue = float(struct[field.name])
                             results.setdefault(field.name, []).append(fvalue)
                        
-                        elif ftype.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM):
+                        elif ftype.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM): # 8 5
                             fvalue = int(struct[field.name])
                             results.setdefault(field.name, []).append(fvalue)
                         
-                        elif ftype.code == gdb.TYPE_CODE_ARRAY:
+                        elif ftype.code == gdb.TYPE_CODE_ARRAY: # 2
                             fvalue = int(struct[field.name].address)
                             results.setdefault(field.name, []).append(fvalue)
 
-                        elif ftype.code == gdb.TYPE_CODE_STRUCT:
+                        elif ftype.code == gdb.TYPE_CODE_STRUCT: # 5
                             struct2 = struct[field.name]
 
                             for field2 in struct2.type.fields():
                                 ftype2 = field2.type.strip_typedefs().unqualified()
                                 if LOG: PRINT('field2.name', field2.name, 'ftype2.code', ftype2.code)
 
-                                if ftype2.code == gdb.TYPE_CODE_PTR:
+                                if ftype2.code == gdb.TYPE_CODE_PTR: # 1
                                     fvalue2 = int(struct2[field2.name])
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
 
-                                elif ftype2.code == gdb.TYPE_CODE_BOOL:
+                                elif ftype2.code == gdb.TYPE_CODE_BOOL: # 21
                                     fvalue2 = bool(struct2[field2.name])
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
 
-                                elif ftype2.code == gdb.TYPE_CODE_FLT:
+                                elif ftype2.code == gdb.TYPE_CODE_FLT: # 9
                                     fvalue2 = float(struct2[field2.name])
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
 
-                                elif ftype2.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM):
+                                elif ftype2.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM): # 8 5
                                     fvalue2 = int(struct2[field2.name])
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
                                 
-                                elif ftype2.code == gdb.TYPE_CODE_ARRAY:
+                                elif ftype2.code == gdb.TYPE_CODE_ARRAY: # 2
                                     fvalue2 = int(struct2[field2.name].address)
                                     results.setdefault(f'{field.name}.{field2.name}', []).append(fvalue2)
 
-                                elif ftype2.code == gdb.TYPE_CODE_STRUCT:
+                                elif ftype2.code == gdb.TYPE_CODE_STRUCT: # 5
                                     struct3 = struct2[field2.name]
 
                                     for field3 in struct3.type.fields():
                                         ftype3 = field3.type.strip_typedefs().unqualified()
                                         if LOG: PRINT('field3.name', field3.name, 'ftype3.code', ftype3.code)
 
-                                        if ftype3.code == gdb.TYPE_CODE_PTR:
+                                        if ftype3.code == gdb.TYPE_CODE_PTR: # 1
                                             fvalue3 = int(struct3[field3.name])
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}.{field3.name}', []).append(fvalue3)
 
-                                        elif ftype3.code == gdb.TYPE_CODE_BOOL:
+                                        elif ftype3.code == gdb.TYPE_CODE_BOOL: # 21
                                             fvalue3 = bool(struct3[field3.name])
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
 
-                                        elif ftype3.code == gdb.TYPE_CODE_FLT:
+                                        elif ftype3.code == gdb.TYPE_CODE_FLT: # 9
                                             fvalue3 = float(struct3[field3.name])
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
 
-                                        elif ftype3.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM):
+                                        elif ftype3.code in (gdb.TYPE_CODE_INT, gdb.TYPE_CODE_ENUM): # 8 5
                                             fvalue3 = int(struct3[field3.name])
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
 
-                                        elif ftype3.code == gdb.TYPE_CODE_ARRAY:
+                                        elif ftype3.code == gdb.TYPE_CODE_ARRAY: # 2
                                             fvalue3 = int(struct3[field3.name].address)
                                             results.setdefault(f'{field.name}.{field2.name}.{field3.name}', []).append(fvalue3)
 
@@ -432,7 +436,7 @@ def cpu(Name, Type=None, Size=None):
             s = para['_M_dataplus']['_M_p'].string(length=n)
             return np.str_(s)        
             
-        else:
+        else: # normal struct
             if LOG: PRINT('t.fields()', t.fields())
 
             results = {}
