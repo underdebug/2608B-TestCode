@@ -8,6 +8,7 @@
 struct Elem
 {
     int value = 0;
+    int index = 1;
     struct Elem* next = NULL;
 };
 
@@ -25,28 +26,6 @@ public:
 private:
     std::vector<double> m_coords;
 };
-
-__global__ void kernelNearest(float* data1, int size1, float* data2, int size2, int* index2)
-{
-    int i1 = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
-
-    for(; i1 < size1; i1 += stride){
-        float best = fabsf(data1[i1] - data2[0]);
-        int bestI2 = 0;
-
-        for (int b = 1; b < size2; ++b) {
-            float diff = fabsf(data1[i1] - data2[b]);
-            if (diff < best) {
-                best = diff;
-                bestI2 = b;
-            }
-        }
-
-        index2[i1] = bestI2;
-    }
-}
-
 
 struct Vec3_t
 {
@@ -77,6 +56,36 @@ struct Vec3_t
     }
 };
 
+struct Triangle_t
+{
+    Vec3_t v0;
+    Vec3_t v1;
+    Vec3_t v2;
+};
+
+__global__ void kernelNearest(float* data1, int size1, float* data2, int size2, int* index2, Triangle_t* triangles)
+{
+    int i1 = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = gridDim.x * blockDim.x;
+
+    for(; i1 < size1; i1 += stride){
+        float best = fabsf(data1[i1] - data2[0]);
+        int bestI2 = 0;
+
+        for (int b = 1; b < size2; ++b) {
+            float diff = fabsf(data1[i1] - data2[b]);
+            if (diff < best) {
+                best = diff;
+                bestI2 = b;
+            }
+        }
+
+        index2[i1] = bestI2;
+    }
+}
+
+
+
 __host__ __device__
 float dot(const Vec3_t& a, const Vec3_t& b)
 {
@@ -98,17 +107,15 @@ Vec3_t cross(const Vec3_t& a, const Vec3_t& b)
 // ============================================================
 // Triangle
 // ============================================================
-
-struct Triangle_t
-{
-    Vec3_t v0;
-    Vec3_t v1;
-    Vec3_t v2;
-};
-
+#include <vector>
 
 int mem() 
 {
+    int i = 1;
+    float f = 1.0f;
+    double d = 2.0;
+
+
     Elem e1;
     e1.value = 1;
 
@@ -174,44 +181,6 @@ int mem()
     double b2[2][2] = {{3, 4}, {7, 8}};
 
     //----------------------------------------------------------------
-    // kernelNearest test data
-    float h_data1[20] = {
-        1.0f, 2.5f, 3.3f, 7.0f, 9.9f, 0.2f, 4.4f, 5.5f, 6.6f, 8.8f,
-        10.1f, 11.3f, 12.7f, 13.2f, 14.9f, 15.4f, 16.8f, 17.1f, 18.6f, 19.0f
-    };
-    float h_data2[4] = {
-        1.1f, 3.0f, 8.0f, 0.5f
-    };
-    int size1 = 20, size2 = 4;
-    int h_index2[20] = {0};
-
-    float *d_data1, *d_data2;
-    int *d_index2;
-    cudaMalloc(&d_data1, size1 * sizeof(float));
-    cudaMalloc(&d_data2, size2 * sizeof(float));
-    cudaMalloc(&d_index2, size1 * sizeof(int));
-
-    cudaMemcpy(d_data1, h_data1, size1 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_data2, h_data2, size2 * sizeof(float), cudaMemcpyHostToDevice);
-
-    int threads = 256;
-    int blocks = 10; //(size1 + threads - 1) / threads;
-    kernelNearest<<<blocks, threads>>>(d_data1, size1, d_data2, size2, d_index2);
-    cudaDeviceSynchronize();
-
-    cudaMemcpy(h_index2, d_index2, size1 * sizeof(int), cudaMemcpyDeviceToHost);
-
-    printf("nearest:");
-    for (int i = 0; i < size1; ++i) {
-        printf(" data1[%d]=%.1f -> data2[%d]=%.1f", i, h_data1[i], h_index2[i], h_data2[h_index2[i]]);
-    }
-    printf("\n");
-
-    cudaFree(d_data1);
-    cudaFree(d_data2);
-    cudaFree(d_index2);
-
-    //----------------------------------------------------------------
 
     Points m_points;
 
@@ -241,6 +210,59 @@ int mem()
     points.push_back(Vec3_t(3.1f, 3.2f, 3.3f));
     points.push_back(Vec3_t(4.1f, 4.2f, 4.3f));
 
+    Triangle_t* d_triangles;
+
+    cudaMalloc(
+        &d_triangles,
+        triangles.size() * sizeof(Triangle_t)
+    );
+
+    cudaMemcpy(
+        d_triangles,
+        triangles.data(),
+        triangles.size() * sizeof(Triangle_t),
+        cudaMemcpyHostToDevice
+    );
+
+        //----------------------------------------------------------------
+    // kernelNearest test data
+    float h_data1[20] = {
+        1.0f, 2.5f, 3.3f, 7.0f, 9.9f, 0.2f, 4.4f, 5.5f, 6.6f, 8.8f,
+        10.1f, 11.3f, 12.7f, 13.2f, 14.9f, 15.4f, 16.8f, 17.1f, 18.6f, 19.0f
+    };
+    
+    float h_data2[4] = {
+        1.1f, 3.0f, 8.0f, 0.5f
+    };
+    int size1 = 20, size2 = 4;
+    int h_index2[20] = {0};
+
+    float *d_data1, *d_data2;
+    int *d_index2;
+    cudaMalloc(&d_data1, size1 * sizeof(float));
+    cudaMalloc(&d_data2, size2 * sizeof(float));
+    cudaMalloc(&d_index2, size1 * sizeof(int));
+
+    cudaMemcpy(d_data1, h_data1, size1 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_data2, h_data2, size2 * sizeof(float), cudaMemcpyHostToDevice);
+
+    int threads = 256;
+    int blocks = 10; //(size1 + threads - 1) / threads;
+    kernelNearest<<<blocks, threads>>>(d_data1, size1, d_data2, size2, d_index2, d_triangles);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_index2, d_index2, size1 * sizeof(int), cudaMemcpyDeviceToHost);
+
+    printf("nearest:");
+    for (int i = 0; i < size1; ++i) {
+        printf(" data1[%d]=%.1f -> data2[%d]=%.1f", i, h_data1[i], h_index2[i], h_data2[h_index2[i]]);
+    }
+    printf("\n");
+
     printf("mem finish");
+    cudaFree(d_data1);
+    cudaFree(d_data2);
+    cudaFree(d_index2);
+
     return 0;    
 };

@@ -1,57 +1,19 @@
 
-import gdb
+a = mem('a', None, 2)
+print('a1 finish', a)
 
-# Get std::vector<Triangle>
-vec = gdb.parse_and_eval('triangles')
+a = mem('a', 'double', 2)
+print('a2 finish', a)
 
-# Get vector begin/end pointers
-start = vec['_M_impl']['_M_start']
-finish = vec['_M_impl']['_M_finish']
+print(mem('d_triangles', None, 2))
 
-# Number of triangles
-size = int(finish - start)
+print(mem('d_nodes', None, 2))
 
-gdb.write("Triangle count = " + str(size) + "\n")
 
-data = []
+-exec python import sys; sys.path[:0]=["/home/roots/develop/2608B-TestCode-t/2609D-BVH/2609D1-BVH/mem","/home/roots/.vscode/extensions/local.mem-0.0.1"]; import importlib, mem; importlib.reload(mem); from mem import *;
+-exec python import sys; sys.path[:0]=["/home/roots/develop/2608B-TestCode-t/2609D-BVH/2609D1-BVH/mem","/home/roots/.vscode/extensions/local.mem-0.0.1"]; import importlib, mem; importlib.reload(mem); from mem import *; 
 
-# Loop through all triangles
-for i in range(size):
+python exec("print('d_triangles =', mem('d_triangles', None, 12))")
 
-    # Get Triangle i
-    tri = start[i]
-
-    triangle_data = []
-
-    # Automatically get Triangle members: v0, v1, v2, ...
-    for field in tri.type.fields():
-
-        name = field.name
-
-        # Skip unnamed fields
-        if name is None:
-            continue
-
-        # Get Vec3
-        v = tri[name]
-
-        # Automatically get Vec3 members: x, y, z
-        vec_data = []
-
-        for vf in v.type.fields():
-
-            vname = vf.name
-
-            if vname is None:
-                continue
-
-            value = float(v[vname])
-
-            vec_data.append(value)
-
-        triangle_data.append(vec_data)
-
-    data.append(triangle_data)
-
-# Print result
-gdb.write(str(data) + "\n")
+A = gpu('dir', None, 12)
+print('A', A)

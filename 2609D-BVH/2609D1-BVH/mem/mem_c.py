@@ -1,9 +1,19 @@
-# import inspect
 
-# def print(*args, **kwargs):
-#     print('LINE', inspect.currentframe().f_back.f_lineno, *args, **kwargs)
+a1 = mem('i', None, 4)
+a2 = mem('d', None, 4)
+a3 = mem('f', None, 4)
+
+print('a1', a1)
+print('a2', a2)
+print('a3', a3)
+if a1 == 0: raise ValueError("a1", a1)
+if a2 == 0: raise ValueError("a2", a2)
+if a3 == 0: raise ValueError("a3", a3)
 
 e1 = mem('e1', None, 12)
+print('e1', e1)
+if e1['value'] == 0: raise ValueError("e1['value']", e1['value'])
+
 print('e1.type', len(e1), type(e1), e1)
 
 s1 = mem('s1', None, 12)
@@ -33,6 +43,13 @@ print('h_data1', h_data1)
 d_data1 = mem('d_data1', 'float', 12)
 print('d_data1', d_data1)
 
+if d_data1[0] == 0: raise ValueError("d_data1", d_data1)
+
+# d_data1 = cpu('d_data1', 'float', 12)
+# print('d_data1', d_data1)
+
+# if d_data1[0] == 0: raise ValueError("d_data1", d_data1)
+
 m_points = mem('m_points', None, 12)
 print('m_points', m_points)
 
@@ -56,9 +73,7 @@ print('triangles', triangles)
 triangles = mem('triangles', None, 12)
 print(type(triangles))
 print('triangles', triangles)
-print('triangles', triangles['v0.x'])
-# print('triangles', triangles.item()['v0.x'])
-
+print('triangles', L(triangles)['v0.x'])
 
 points = mem('points', None, 12)
 print('points', points)
@@ -78,3 +93,16 @@ results = np.asarray(results)
 
 print('results', results)
 
+
+triangles = mem('triangles', None, 12)
+print('triangles', triangles)
+
+v0_x = L(triangles)['v0.x']
+v0_y = L(triangles)['v0.y']
+
+print('v0.x', v0_x)
+print('v0.y', v0_y)
+
+triangle_name = 'd_triangles'
+d_triangles = mem(triangle_name, None, 2)
+print('d_triangles', d_triangles)
