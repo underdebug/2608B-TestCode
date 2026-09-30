@@ -1,0 +1,2 @@
+Loaded 2031 points from ./sphere.ply
+Saved ./sphere_mesh.ply: 4002 vertices, 8000 triangles
