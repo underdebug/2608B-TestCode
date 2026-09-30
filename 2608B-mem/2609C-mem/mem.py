@@ -28,7 +28,7 @@ import numpy as np
 import inspect
 import math
 
-LOG = 0 # 9/27 2026
+LOG = 1 # 9/29 2026
 
 np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
@@ -40,48 +40,13 @@ else:
 os.makedirs(PATH, exist_ok=True)
 
 def PRINT(*args, **kwargs):
-    print(inspect.currentframe().f_back.f_lineno, *args, **kwargs)
+    caller = inspect.currentframe().f_back
+    try:
+        print(f"{caller.f_lineno:3d}", f"{caller.f_code.co_name:<18}", *args, **kwargs)
+    finally:
+        del caller
 
-def get_pids(name):
-    pids = []
-    for pid in os.listdir("/proc"):
-        if not pid.isdigit():
-            continue
-        try:
-            with open(f'/proc/{pid}/cmdline', 'rb') as field:
-                parts = field.read_memory().split(b"\x00")
-            exe = os.PATH.basename(parts[0].decode(errors="ignore"))
-            if exe == name:
-                pids.append(int(pid))
-        except (FileNotFoundError, PermissionError):
-            continue
-
-    if not pids:
-        print(f'get_pids({name}) fail')
-        sys.exit()
-    return pids
-
-def mon(app, addr, type, size):
-    pid = get_pids(app)[0]
-    addr_t = int(addr, 0) if isinstance(addr, str) else int(addr)
-
-    shape = size if isinstance(size, (list, tuple)) else [size]
-    data_size = 1
-    for s in shape:
-        data_size *= s
-    data_size *= np.dtype(_CPU_MAP[type]).itemsize
-
-    with open(f'/proc/{pid}/mem', 'rb', 0) as field:
-        field.seek(addr_t)    
-        return field.read_memory(data_size)
-
-    data = np.frombuffer(raw, dtype=_CPU_MAP[type])
-
-    if len(shape) > 1:
-        data = data.reshape(shape)
-    return data
-
-_CPU_MAP = {
+TYPE_MAP = {
     'unsigned char':            np.uint8,
     'char':                     np.int8,
     'unsigned short':           np.uint16,      
@@ -95,11 +60,11 @@ _CPU_MAP = {
 }
 
 def normalize_size(Size_mem, Size_read):   
+    Size_mem = np.atleast_1d(np.asarray(Size_mem)) if Size_mem is not None else None
+    Size_read = np.atleast_1d(np.asarray(Size_read)) if Size_read is not None else None
+
     if Size_read is None:
         return Size_mem
-
-    Size_mem = np.atleast_1d(np.asarray(Size_mem))
-    Size_read = np.atleast_1d(np.asarray(Size_read))
 
     Size_mem_p = math.prod(Size_mem)
     Size_read_p = math.prod(Size_read)
@@ -118,40 +83,32 @@ def normalize_size(Size_mem, Size_read):
                 Size = Size_new
             else:
                 break
+
     return Size
 
-def read_memory(Addr, Type, Size):
-    # data_size = math.prod(int(s) for s in (Size if isinstance(Size, (list, tuple)) else [Size]))
-    Size = np.atleast_1d(np.asarray(Size))
-    data_size = math.prod(Size)
-    data_size *= np.dtype(_CPU_MAP[Type]).itemsize
+def cpu_memory(Addr, Type, Size):
+    if LOG: PRINT('Addr', Addr, 'Type', Type, 'Size', Size)
+
+    target = gdb.lookup_type(Type)   
+    byte_count = target.sizeof * math.prod(Size)
 
     inferior = gdb.selected_inferior()
-    raw = inferior.read_memory(Addr, data_size)
-    data = np.frombuffer(raw, dtype=_CPU_MAP[Type])
+    raw = inferior.read_memory(Addr, byte_count)
+    data = np.frombuffer(raw, dtype=TYPE_MAP[Type])
 
     data = data.reshape(Size)
     return data
 
-def parse_ptr(para, Type=None, Size=None):
-    ftype = para.type.strip_typedefs()
-
-    if Type is None:
-        Type = next((k for k, v in _CPU_MAP.items() if k in str(ftype)), None)
-
-    Addr = int(para)
-    return read_memory(Addr, Type, Size)
-
-def parse_array(para, Type=None, Size=None):
+def cpu_array(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
 
     if Type is not None and Size is not None: # top priority
         Addr = int(para.address)
-        return read_memory(Addr, Type, Size)  
+        return cpu_memory(Addr, Type, Size)  
 
     if Type is None:
         s = str(ftype.target().strip_typedefs().unqualified())
-        Type = next((k for k, v in _CPU_MAP.items() if s.startswith(k)), None)
+        Type = next((k for k, v in TYPE_MAP.items() if s.startswith(k)), None)
 
     # get array size line int[2][3]
     et, dims = ftype, []
@@ -174,27 +131,27 @@ def parse_array(para, Type=None, Size=None):
         Addr = int(para.address)
 
         if Type is None: # Type:None like int*
-            Type = next((k for k, v in _CPU_MAP.items() if k in str(ftype)), None)
+            Type = next((k for k, v in TYPE_MAP.items() if k in str(ftype)), None)
     
         if LOG: PRINT(Addr, Type, Size)
-        return read_memory(Addr, Type, Size)  
+        return cpu_memory(Addr, Type, Size)  
 
     else:
         if LOG: PRINT('Type', Type)
         if len(Size) == 1:   
             results = [None] * Size[0]  
             for i in range(Size[0]):
-                results[i] = _cpu(para[i])
+                results[i] = cpu(para[i])
             return results;
 
         elif len(Size) == 2:
             results = [[None] * Size[1] for _ in range(Size[0])]
             for i in range(Size[0]):
                 for j in range(Size[1]):
-                    results[i][j] = _cpu(para[i][j])
+                    results[i][j] = cpu(para[i][j])
             return results; 
 
-def parse_stdvector(para, Type=None, Size=None):
+def cpu_stdvector(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
 
     start = para['_M_impl']['_M_start']
@@ -207,19 +164,19 @@ def parse_stdvector(para, Type=None, Size=None):
 
     if Type is not None and Size is not None: # top priority
         if LOG: PRINT('gdb.TYPE_CODE_STRUCT, start =', start, ',Type =', Type, ',Size =', Size)
-        return read_memory(start, Type, Size)    
+        return cpu_memory(start, Type, Size)    
     
     if LOG: PRINT('gdb.TYPE_CODE_STRUCT type', str(ftype.template_argument(0).strip_typedefs()))
     if Type is None:
         s = str(ftype.template_argument(0).strip_typedefs())
-        Type = next((k for k, v in _CPU_MAP.items() if s.startswith(k)), None)    
+        Type = next((k for k, v in TYPE_MAP.items() if s.startswith(k)), None)    
 
     if LOG: PRINT('gdb.TYPE_CODE_STRUCT, Size_t', Size_t, 'Size >', Size)
     Size = normalize_size(Size_t, Size)
     if LOG: PRINT('gdb.TYPE_CODE_STRUCT, start', start, 'Type', Type, 'Size <', Size)
 
     if Type is not None:                
-        return read_memory(start, Type, Size)  
+        return cpu_memory(start, Type, Size)  
 
     results = []
     for i in range(int(np.atleast_1d(Size)[0])):
@@ -235,9 +192,8 @@ def parse_stdvector(para, Type=None, Size=None):
                 gdb.TYPE_CODE_BOOL,
                 gdb.TYPE_CODE_ENUM,
                 gdb.TYPE_CODE_ARRAY,
-                gdb.TYPE_CODE_STRUCT,
-            }:
-                result[field.name] = _cpu(struct[field.name], None, None)
+                gdb.TYPE_CODE_STRUCT}:
+                result[field.name] = cpu_(struct[field.name], None, None)
 
             elif ftype2.code == gdb.TYPE_CODE_PTR:
                 result[field.name] = int(struct[field.name])
@@ -246,21 +202,15 @@ def parse_stdvector(para, Type=None, Size=None):
 
     return results
 
-    #         # fields() returns metadata; decode the member value instead.
-    #         result = _cpu(struct[field.name], None, None)
-    #         results.setdefault(field.name, []).append(result)
-
-    # return results
-
-def parse_stdarray(para, Type=None, Size=None):
+def cpu_stdarray(para, Type=None, Size=None):
     Addr = int(para['_M_elems'].address)
-    return read_memory(Addr, Type, Size)  
+    return cpu_memory(Addr, Type, Size)  
 
-def parse_stdpair(para, Type=None, Size=None):
+def cpu_stdpair(para, Type=None, Size=None):
     Addr = int(para.address)
-    return read_memory(Addr, Type, Size)     
+    return cpu_memory(Addr, Type, Size)     
 
-def parse_struct(para, Type=None, Size=None):
+def cpu_struct(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
 
     results = {}
@@ -274,16 +224,15 @@ def parse_struct(para, Type=None, Size=None):
                 gdb.TYPE_CODE_BOOL,
                 gdb.TYPE_CODE_ENUM,
                 gdb.TYPE_CODE_ARRAY,
-                gdb.TYPE_CODE_STRUCT,
-            }:
-            results[field.name] = _cpu(para2, None, None)
+                gdb.TYPE_CODE_STRUCT}:
+            results[field.name] = cpu_(para2, None, None)
 
         elif ftype2.code == gdb.TYPE_CODE_PTR:
             results[field.name] = int(para2)
 
     return results
 
-def _cpu(para, Type=None, Size=None):
+def cpu_(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
  
     while ftype.code in (gdb.TYPE_CODE_REF, gdb.TYPE_CODE_RVALUE_REF):
@@ -300,28 +249,33 @@ def _cpu(para, Type=None, Size=None):
 
         target_type = ftype.target().strip_typedefs().unqualified()
         if target_type.code == gdb.TYPE_CODE_STRUCT:
-            return _cpu(para.dereference(), Type, Size)
+            if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR, target_type.code == gdb.TYPE_CODE_STRUCT ', para.dereference())
+            return cpu_(para.dereference(), Type, Size)
 
-        return parse_ptr(para, Type, Size)
+        Addr = int(para)
+        if Type is None:
+            Type = str(target_type)
+
+        return cpu_memory(Addr, Type, Size)
 
     elif ftype.code == gdb.TYPE_CODE_ARRAY: # 2
-        return parse_array(para, Type, Size)
+        return cpu_array(para, Type, Size)
 
     elif ftype.code == gdb.TYPE_CODE_STRUCT: # 3
         if str(ftype).startswith('std::vector'):
-            return parse_stdvector(para, Type, Size)
+            return cpu_stdvector(para, Type, Size)
 
         elif str(ftype).startswith('std::array'):
-            return parse_stdarray(para, Type, Size)
+            return cpu_stdarray(para, Type, Size)
 
         elif str(ftype).startswith('std::pair'):
-            return parse_stdpair(para, Type, Size)
+            return cpu_stdpair(para, Type, Size)
 
         elif 'Eigen::Matrix' in str(ftype): # Eigen::Matrix
             n = int(ftype.template_argument(1))
             d = para['m_storage']['m_data']
             Addr = int(d['array'][0].address)
-            return read_memory(Addr, Type, Size) 
+            return cpu_memory(Addr, Type, Size) 
         
         elif '::basic_string' in str(ftype): # std::string
             n = int(para['_M_string_length'])
@@ -329,7 +283,7 @@ def _cpu(para, Type=None, Size=None):
             return np.str_(s)  
 
         else:
-            return parse_struct(para, Type, Size)
+            return cpu_struct(para, Type, Size)
     
     elif ftype.code == gdb.TYPE_CODE_ENUM: # 5
         if ftype.sizeof == 1:
@@ -365,114 +319,68 @@ def _cpu(para, Type=None, Size=None):
     elif ftype.code == gdb.TYPE_CODE_BOOL: # 21
         return np.bool_(int(para))
 
-def cpu(Name, Type=None, Size=None):   
+def cpu(Name, Type=None, Size=None):
+    if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size)
     para = gdb.parse_and_eval(Name)
-    return _cpu(para, Type, Size)  
+    return cpu_(para, Type, Size)
 
-_GPU_MAP = {
-    'unsigned char':            np.uint8,
-    'char':                     np.int8,
-    'unsigned short':           np.uint16,      
-    'short':                    np.int16,
-    'unsigned int':             np.uint32,        
-    'int':                      np.int32,
-    'unsigned long long':       np.uint64,
-    'unsigned long':            np.dtype('L'),
-    'float':                    np.float32,
-    'double':                   np.float64,       
-}
 
-def gpu(Name, Type=None, Size=None, Step = 1):  
-    para = gdb.parse_and_eval(Name)
+def gpu_struct(para, Type=None, Size=None):
+    count = 1 if Size is None else math.prod(np.atleast_1d(Size))
+    results = []
+    for i in range(count):
+        struct = para[i]
+        ftype = struct.type.strip_typedefs().unqualified()
+
+        result = {}
+
+        for field in ftype.fields():
+            ftype2 = field.type.strip_typedefs().unqualified()
+            para2 = struct[field.name]      
+
+            if ftype2.code in {
+                    gdb.TYPE_CODE_INT,
+                    gdb.TYPE_CODE_FLT,
+                    gdb.TYPE_CODE_BOOL,
+                    gdb.TYPE_CODE_ENUM,
+                    gdb.TYPE_CODE_ARRAY,
+                    gdb.TYPE_CODE_STRUCT}:
+                result[field.name] = cpu_(para2, None, None)
+
+            elif ftype2.code == gdb.TYPE_CODE_PTR:
+                result[field.name] = int(para2)
+    
+        results.append(result)
+
+    return results
+
+def gpu_(para, Type=None, Size=None):
+    # return cpu_(para, Type, Size)
     ftype = para.type.strip_typedefs()
 
     while ftype.code in (gdb.TYPE_CODE_REF, gdb.TYPE_CODE_RVALUE_REF):
         para = para.referenced_value()
-        ftype = para.type.strip_typedefs()   
+        ftype = para.type.strip_typedefs()  
 
-    if ftype.code == gdb.TYPE_CODE_PTR: # 1 
+    ftype = ftype.unqualified()
+
+    if ftype.code == gdb.TYPE_CODE_PTR: # 1
+        if LOG: PRINT('str(ftype)', str(ftype))
+    
+        if int(para) == 0:
+            return None
+
+        target_type = ftype.target().strip_typedefs().unqualified()
+        if target_type.code == gdb.TYPE_CODE_STRUCT:
+            if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR, target_type.code == gdb.TYPE_CODE_STRUCT ')
+            Size = [math.prod(Size)]
+            return gpu_struct(para, Type, Size)
+
+        Addr = int(para)
         if Type is None:
-            Type = str(ftype.target())
+            Type = str(target_type)
 
-        type_t = next((v for k, v in _GPU_MAP.items() if k in Type), None)
-
-        if type_t is None:
-            PRINT(f'mem do not support {Type} fail')
-            return None;
-            
-        data_size = int(np.prod(Size, dtype=np.int64))
-        data_size *= np.dtype(type_t).itemsize
-
-        if LOG: PRINT('Type', Type)
-        
-        if '@' not in str(ftype.target()):
-            d_addr = int(para)
-
-            expr = f'((unsigned char*)malloc({data_size}))'
-            if LOG: PRINT('expr', expr)
-
-            h_addr = int(gdb.parse_and_eval(expr))
-
-            if LOG: PRINT('h_addr', h_addr, 'd_addr', d_addr, 'data_size', data_size)
-
-            expr = f'((int (*)(void*, const void*, size_t, int))cudaMemcpy)((void*){h_addr}, (void*){d_addr}, {data_size}, cudaMemcpyDeviceToHost)'
-            ret = gdb.parse_and_eval(expr)
-
-            inferior = gdb.selected_inferior()
-            raw = inferior.read_memory(h_addr, data_size)
-            data = np.frombuffer(raw, dtype=type_t).copy()
-
-            expr = f'((void(*)(void*))free)((void*){h_addr})'
-            gdb.parse_and_eval(expr)
-
-        elif Step > 1 and len(shape) > 1:
-            data = np.empty(shape, dtype=type_t)
-
-            for i in range(0, shape[0], Step):
-                for j in range(0, shape[1], Step):
-                    data[i, j] = (para + i * shape[1] + j).dereference()
-
-                    for di in range(Step): 
-                        ii = i + di
-                        if ii >= shape[0]:
-                            continue
-
-                        for dj in range(Step):
-                            jj = j + dj
-                            if jj >= shape[1]:
-                                continue
-                            
-                            data[ii, jj] = data[i, j];
-
-        else:
-            total_size = data_size
-            if data_size % 8 == 0:
-                total_size = int(data_size / 8)
-                total_data = np.empty(total_size, dtype=np.ulonglong)
-                total_type = gdb.lookup_type("unsigned long long")
-            elif data_size % 4 == 0:
-                total_size = int(data_size / 4)
-                total_data = np.empty(total_size, dtype=np.uint32)
-                total_type = gdb.lookup_type("unsigned int")
-            elif data_size % 2 == 0:
-                total_size = int(data_size / 2)
-                total_data = np.empty(total_size, dtype=np.uint16)
-                total_type = gdb.lookup_type("unsigned short")    
-            else:
-                total_size = int(data_size)
-                total_data = np.empty(total_size, dtype=np.uint8)
-                total_type = gdb.lookup_type("unsigned char")  
-
-            for i in range(total_size):
-                total_offset = int(i * total_data.itemsize / para.type.target().sizeof)
-                total_data[i] = (para + total_offset).cast(total_type.pointer()).dereference()
-        
-            data = total_data.view(type_t)
-
-        if LOG: PRINT('Size =', Size, 'len(Size)', len(Size))
-        if len(Size) > 1:
-            data = data.reshape(Size)
-        return data
+        return cpu_memory(Addr, Type, Size)
   
     elif ftype.code == gdb.TYPE_CODE_INT: # 8
         if LOG: PRINT('ftype.code', gdb.TYPE_CODE_INT, 'ftype.sizeof', ftype.sizeof)
@@ -498,38 +406,287 @@ def gpu(Name, Type=None, Size=None, Step = 1):
         if LOG: PRINT(f'{name}({ftype.code}): fail')
 
     return None
-    
-#------------------------------------------------------------------------
-# mem
-#------------------------------------------------------------------------
 
-def _mem(Name, Type=None, Size=None, Step=1):
-    _FULL_TYPE = {
-        'uc':                   'unsigned char',
-        'c':                    'char',
-        'us':                   'unsigned short',
-        's':                    'short',
-        'ui':                   'unsigned int',
-        'i':                    'int',
-        'ull':                  'unsigned long long',
-        'ul':                   'unsigned long',
-        'f':                    'float',
-        'd':                    'double',
-    }
+def gpu_buffer_size(d_addr):
+    base_addr = 0
+    size_addr = 0
+    try:
+        base_addr = int(gdb.parse_and_eval(
+            '((unsigned long long*)calloc(1, sizeof(unsigned long long)))'
+        ))
+        size_addr = int(gdb.parse_and_eval(
+            '((size_t*)calloc(1, sizeof(size_t)))'
+        ))
 
-    if Type is not None and Type in _FULL_TYPE:
-        Type = _FULL_TYPE[Type]  
-    
-    if Size is not None:
-        Size = np.atleast_1d(np.asarray(Size))
+        expr = (
+            f'((int (*)(unsigned long long*, size_t*, unsigned long long))cuMemGetAddressRange_v2)('
+            f'(unsigned long long*){base_addr}, '
+            f'(size_t*){size_addr}, '
+            f'(unsigned long long){d_addr})'
+        )
+        ret = int(gdb.parse_and_eval(expr))
 
-    if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size, 'Step', Step)
+        base = int(gdb.parse_and_eval(f'*(unsigned long long*){base_addr}'))
+        size = int(gdb.parse_and_eval(f'*(size_t*){size_addr}'))
 
+        return size
+        
+    finally:
+        if size_addr:
+            gdb.parse_and_eval(f'((void (*)(void*))free)((void*){size_addr})')
+        if base_addr:
+            gdb.parse_and_eval(f'((void (*)(void*))free)((void*){base_addr})')
+
+
+def gpu(Name, Type=None, Size=None):
+    if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size)
     para = gdb.parse_and_eval(Name)
 
     ftype = para.type.strip_typedefs()
 
-    if LOG: PRINT('para.type.strip_typedefs()', str(ftype))
+    while ftype.code in (gdb.TYPE_CODE_REF, gdb.TYPE_CODE_RVALUE_REF):
+        para = para.referenced_value()
+        ftype = para.type.strip_typedefs()  
+
+    ftype = ftype.unqualified()
+
+    if ftype.code != gdb.TYPE_CODE_PTR: # 1
+        if LOG: PRINT('ftype.code != gdb.TYPE_CODE_PTR', ftype.code)
+        return None
+
+    if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR', ftype.code)
+
+    if Type is not None:
+        target = gdb.lookup_type(Type)
+        if LOG: PRINT('Type', Type, '=> str(target)', str(target))
+    else:
+        target = ftype.target().strip_typedefs().unqualified()
+        if LOG: PRINT('str(ftype)', str(ftype), '=> str(target)', str(target))
+    
+    d_addr = int(para)
+
+    d_addr_size = gpu_buffer_size(d_addr)
+    Size_new = int(d_addr_size / target.sizeof)
+
+    if LOG: PRINT('d_addr_size', d_addr_size, 'Size_new', Size_new, 'Size', Size)
+    Size = normalize_size(Size_new, Size)
+
+    byte_count = target.sizeof * math.prod(Size)  
+
+    # expr = f'((unsigned char*)malloc({byte_count}))'
+    expr = f'((unsigned char*)calloc(1, {byte_count}))'
+    if LOG: PRINT('expr', expr, [target.sizeof, math.prod(Size)])
+
+    h_addr = int(gdb.parse_and_eval(expr))
+    
+    try:
+        if LOG: PRINT('h_addr', h_addr, 'd_addr', d_addr, 'byte_count', byte_count)
+
+        expr = f'((int (*)(void*, const void*, size_t, int))cudaMemcpy)((void*){h_addr}, (void*){d_addr}, {byte_count}, cudaMemcpyDeviceToHost)'
+        if LOG: PRINT('expr', expr)
+        ret = gdb.parse_and_eval(expr)
+
+        para2 = gdb.Value(h_addr).cast(target.pointer())
+        data = gpu_(para2, Type, Size)
+
+        return data
+
+    except Exception as e:
+        if LOG: PRINT(f"Exception {type(e).__name__}: {e}")
+        return None
+
+    finally:
+        expr = f'((void(*)(void*))free)((void*){h_addr})'
+        if LOG: PRINT('expr', expr)
+        gdb.parse_and_eval(expr)
+
+def kernel_memory(para, Type, Size, Step):
+    if LOG: PRINT('para', para, 'Type', Type, 'Size', Size, 'Step', Step)
+
+    if Step > 1 and len(Size) > 1:
+        if LOG: PRINT('Step operation')
+
+        type_t = TYPE_MAP[Type]
+        data = np.empty(Size, dtype=type_t)
+
+        for i in range(0, Size[0], Step):
+            for j in range(0, Size[1], Step):
+                data[i, j] = (para + i * Size[1] + j).dereference()
+
+                for di in range(Step): 
+                    ii = i + di
+                    if ii >= shape[0]:
+                        continue
+
+                    for dj in range(Step):
+                        jj = j + dj
+                        if jj >= Size[1]:
+                            continue
+                        
+                        data[ii, jj] = data[i, j];
+        return data
+
+    else:
+        if LOG: PRINT('No step operation')
+
+        type_t = TYPE_MAP[Type]
+        data_size = np.dtype(type_t).itemsize
+        data_size *= int(np.prod(Size))
+
+        if LOG: PRINT('type_t', type_t, 'data_size', data_size, [np.dtype(type_t).itemsize, int(np.prod(Size))])
+
+        if LOG: PRINT('para', para, 'para.dereference()', para.dereference(), 'for Test')
+
+        total_size = data_size
+        if data_size % 8 == 0:
+            total_size = int(data_size / 8)
+            total_data = np.empty(total_size, dtype=np.ulonglong)
+            total_type = gdb.lookup_type("unsigned long long")
+        elif data_size % 4 == 0:
+            total_size = int(data_size / 4)
+            total_data = np.empty(total_size, dtype=np.uint32)
+            total_type = gdb.lookup_type("unsigned int")
+        elif data_size % 2 == 0:
+            total_size = int(data_size / 2)
+            total_data = np.empty(total_size, dtype=np.uint16)
+            total_type = gdb.lookup_type("unsigned short")    
+        else:
+            total_size = int(data_size)
+            total_data = np.empty(total_size, dtype=np.uint8)
+            total_type = gdb.lookup_type("unsigned char")  
+
+        for i in range(total_size):
+            total_offset = int(i * total_data.itemsize / para.type.target().sizeof)
+            total_data[i] = (para + total_offset).cast(total_type.pointer()).dereference()
+
+        data = total_data.view(type_t)
+        return data
+
+def kernel_array(para, Type=None, Size=None):
+    ftype = para.type.strip_typedefs().unqualified()
+    dims = []
+    element_type = ftype
+    while element_type.code == gdb.TYPE_CODE_ARRAY:
+        lo, hi = element_type.range()
+        dims.append(hi - lo + 1)
+        element_type = element_type.target().strip_typedefs().unqualified()
+
+    shape = normalize_size(dims, Size)
+    count = math.prod(shape)
+    results = []
+
+    def read_elements(value):
+        value_type = value.type.strip_typedefs().unqualified()
+        if value_type.code == gdb.TYPE_CODE_ARRAY:
+            lo, hi = value_type.range()
+            for i in range(lo, hi + 1):
+                if len(results) >= count:
+                    break
+                # Index the original value to preserve CUDA's @local address space.
+                read_elements(value[i])
+        elif value_type.code == gdb.TYPE_CODE_PTR:
+            results.append(int(value))
+        else:
+            results.append(cpu_(value, None, None))
+
+    read_elements(para)
+    dtype = TYPE_MAP[Type] if Type is not None else None
+    return np.asarray(results, dtype=dtype).reshape(shape)
+
+def kernel_struct(para, Type=None, Size=None):
+    ftype = para.type.strip_typedefs()
+
+    results = {}
+    for field in ftype.fields():
+        ftype2 = field.type.strip_typedefs().unqualified()
+        para2 = para[field.name]      
+
+        if ftype2.code in {
+                gdb.TYPE_CODE_INT,
+                gdb.TYPE_CODE_FLT,
+                gdb.TYPE_CODE_BOOL,
+                gdb.TYPE_CODE_ENUM,
+                gdb.TYPE_CODE_ARRAY,
+                gdb.TYPE_CODE_STRUCT}:
+            results[field.name] = kernel_(para2, None, None)
+
+        elif ftype2.code == gdb.TYPE_CODE_PTR:
+            results[field.name] = int(para2)
+
+    return results
+
+def kernel_(para, Type=None, Size=None, Step = 1):  
+    ftype = para.type.strip_typedefs()
+
+    while ftype.code in (gdb.TYPE_CODE_REF, gdb.TYPE_CODE_RVALUE_REF):
+        para = para.referenced_value()
+        ftype = para.type.strip_typedefs()  
+
+    ftype = ftype.unqualified()
+
+    if LOG: PRINT('ftype', str(ftype), 'ftype.code', ftype.code)
+
+    if ftype.code == gdb.TYPE_CODE_PTR: # 1
+        if LOG: PRINT('str(ftype)', str(ftype))
+    
+        if int(para) == 0:
+            return None
+
+        target_type = ftype.target().strip_typedefs().unqualified()
+        if target_type.code == gdb.TYPE_CODE_STRUCT:
+            if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR, target_type.code == gdb.TYPE_CODE_STRUCT ')
+            return kernel_struct(para.dereference(), Type, Size)
+
+        Addr = int(para) # Normal PTR
+        if Type is None:
+            Type = str(target_type).replace('@generic ', '')
+
+        if LOG: PRINT('Addr', Addr, 'Type', Type, 'Size', Size, 'Step', Step)
+        return kernel_memory(para, Type, Size, Step)
+  
+    elif ftype.code == gdb.TYPE_CODE_ARRAY: # 2
+        return kernel_array(para, Type, Size)  
+
+    if ftype.code == gdb.TYPE_CODE_STRUCT:
+        return kernel_struct(para, Type, Size)
+
+    elif ftype.code == gdb.TYPE_CODE_INT: # 8
+        if LOG: PRINT('ftype.code', gdb.TYPE_CODE_INT, 'ftype.sizeof', ftype.sizeof)
+        if ftype.sizeof == 1:
+            return np.int8(para) if ftype.is_signed else np.uint8(para)
+        elif ftype.sizeof == 2:
+            return np.int16(para) if ftype.is_signed else np.uint16(para)
+        elif ftype.sizeof == 4:
+            return np.int32(para) if ftype.is_signed else np.uint32(para)
+        else:
+            return np.int64(para) if ftype.is_signed else np.uint64(para)
+
+    elif ftype.code == gdb.TYPE_CODE_FLT: # 9
+        if LOG: PRINT('ftype.code', gdb.TYPE_CODE_INT, 'ftype.sizeof', ftype.sizeof)
+        if ftype.sizeof == 4:
+            return np.float32(para)
+        elif ftype.sizeof == 8:
+            return np.float64(para)
+        else:
+            return np.longdouble(para)
+
+    else:
+        if LOG: PRINT(f'{name}({ftype.code}): fail')
+
+    return None
+
+def kernel(Name, Type=None, Size=None, Step = 1):  
+    if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size)
+    para = gdb.parse_and_eval(Name)
+    return kernel_(para, Type, Size, Step)
+
+#------------------------------------------------------------------------
+# mem
+#------------------------------------------------------------------------
+
+def is_device_pointer(Name):
+    para = gdb.parse_and_eval(Name)
+    ftype = para.type.strip_typedefs().unqualified()
 
     if '@' not in str(ftype):
         sym, is_field  = gdb.lookup_symbol("cudaPointerGetAttributes")
@@ -549,47 +706,69 @@ def _mem(Name, Type=None, Size=None, Step=1):
             gdb.parse_and_eval(f'(void) free((void *) {buf:#x})')
 
             if attr in [2, 3]:
-                if LOG: PRINT('mem gpu host', Name, Type, Size, Step)
-                data = gpu(Name, Type, Size, Step)
-                if LOG: PRINT('mem gpu host save', f'{PATH}/{Name}.npy')
-                np.save(f'{PATH}/{Name}.npy', data) 
-                return data
+                if LOG: PRINT('is_device_pointer success:', 'mem kernel host 1')
+                return 1
             else:
-                if LOG: PRINT('mem cpu', Name, Type, Size)
-                data = cpu(Name, Type, Size)
-                if LOG: PRINT('mem cpu save', f'{PATH}/{Name}.npy')
-                np.save(f'{PATH}/{Name}.npy', data) 
-                return data
-                
+                if LOG: PRINT('is_device_pointer success:', 'mem cpu 0')
+                return 0
+        
         except gdb.error as e:
-            if LOG: PRINT('pga failed:', e)
-            if LOG: PRINT('mem cpu', Name, Type, Size)
-            data = cpu(Name, Type, Size)
-            if LOG: PRINT('data', type(data), data)
-            if LOG: PRINT('mem cpu save', f'{PATH}/{Name}.npy')
-            np.save(f'{PATH}/{Name}.npy', data) 
-            return data
-    else:        
-        if LOG: PRINT('mem gpu device')
-        data = gpu(Name, Type, Size, Step)
-        if LOG: PRINT('mem gpu device save', type(data), f'{PATH}/{Name}.npy')
-        np.save(f'{PATH}/{Name}.npy', data) 
-        return data
+            if LOG: PRINT('is_device_pointer fail:', e, 'mem cpu 0')
+            return 0
+    else:
+        if LOG: PRINT('is_device_pointer success:', 'mem kernel kernel 2')
+        return 2
 
+def mem_(Name, Type=None, Size=None, Step=1):
+    TYPE = {
+        'uc':        'unsigned char',
+        'c':         'char',
+        'us':        'unsigned short',
+        's':         'short',
+        'ui':        'unsigned int',
+        'i':         'int',
+        'ull':       'unsigned long long',
+        'ul':        'unsigned long',
+        'f':         'float',
+        'd':         'double',
+    }
+    Type = next((v for k, v in TYPE.items() if k == Type), Type)
+
+    Size = np.atleast_1d(np.asarray(Size)) if Size is not None else None
+
+    if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size, 'Step', Step)
+
+    is_device = is_device_pointer(Name)
+    if LOG: PRINT('Name', Name, 'is device', is_device)
+
+    if is_device == 0:
+        return cpu(Name, Type, Size)
+
+    elif is_device == 1:
+        return gpu(Name, Type, Size)
+
+    elif is_device == 2:
+        return kernel(Name, Type, Size)
+  
     return None
 
 def mem(Name, Type=None, Size=None, Step=1):
-    if LOG:
-        data = _mem(Name, Type, Size, Step)
+    if LOG: PRINT(
+        '- - - - - - - - - - - - - - - - - - - - - - - - - - - '
+        '- - - - - - - - - - - - - - - - - - - - - - - - - - - ')
 
+    if LOG:
+        data = mem_(Name, Type, Size, Step)
+        np.save(f'{PATH}/{Name}.npy', data) 
     else:
         try:
-            data = _mem(Name, Type, Size, Step)
+            data = mem_(Name, Type, Size, Step)
+            np.save(f'{PATH}/{Name}.npy', data) 
         except Exception:
             data = None
             
     return data
-    
+
 class L(list):
     def __init__(self, data):
         self._single_record = isinstance(data, dict)
@@ -614,7 +793,6 @@ class L(list):
         if self._single_record:
             return repr(super().__getitem__(0))
         return super().__repr__()
-
 
 # Value  Constant                     Meaning
 # -1     TYPE_CODE_BITSTRING          Bit string (deprecated, kept for compatibility)
@@ -655,16 +833,7 @@ class L(list):
 # unset ANTHROPIC_API_KEY
 # echo "[$ANTHROPIC_API_KEY]"
 # /login "Claude account with subscription"
-# /status
-# /usage
-
-# r = subprocess.run(
-#     # sudo sysctl kernel.yama.ptrace_scope=0
-#     ["sudo", "sysctl", "kernel.yama.ptrace_scope=0"]#, capture_output=True, text=True
-# )
-# if r.returncode != 0:
-#     print("sudo sysctl kernel.yama.ptrace_scope=0 fail")  
-#     sys.exit()
+# /status # /usage
 
 # node --version
 # npm --version
