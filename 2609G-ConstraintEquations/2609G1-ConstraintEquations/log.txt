@@ -1,0 +1,30 @@
+Before:
+ 3
+ 4
+80
+ 7
+90
+40
+ 5
+45
+
+iteration = 0   error = 27.8029
+iteration = 1   error = 6.84538e-08
+iteration = 2   error = 1.22038e-23
+
+After:
+P0 = 6.66914e-24, 3.30872e-24
+P1 = 100, -4.54949e-24
+P2 = 100, 50
+P3 = 1.03398e-24, 50
+
+test2: test1 rectangle, minimum displacement using Lagrange multipliers
+Before:
+ 3
+ 4
+80
+ 7
+90
+40
+ 5
+45
