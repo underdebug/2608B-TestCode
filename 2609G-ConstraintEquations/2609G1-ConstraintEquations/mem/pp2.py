@@ -1,8 +1,38 @@
 
-# Outside the kernel: stop in main after cudaMemcpy(d_triangles, ...)
-# and before cudaFree(d_triangles). Size counts Triangle objects (two).
-# Inside traceKernel or traverseBVH: the same pointer is named triangles.
+X = mem('X')
+print('X', X)
 
-triangle_name = 'd_triangles'
-d_triangles = mem(triangle_name, None, 2)
-print('d_triangles', d_triangles)
+print(X, ' = X')
+
+
+X2 = mem('X', None, [4, 2])
+print('X2', X2)
+
+
+a = mem('a')
+print('a', a)
+
+
+b = mem('b')
+print('b', b)
+
+
+c = mem('c')
+print(c, '<= c')
+
+
+s = 1
+print(s, '<= s', len(s))
+
+str = 'a'
+d = mem(str)
+print(d, '<= d', len(d))
+
+print(d, '<= d', len(d))
+
+str = 'X'
+d = mem(str)
+if hasattr(d, '__len__'):
+    print(d, f'<= d[{len(d)}]')
+
+print(d, '<= d', len(d))

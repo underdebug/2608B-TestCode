@@ -149,7 +149,11 @@ async function activate(context) {
           return;
         }
 
-        expression = `print('${text} =', mem('${text}'))`;
+        //expression = `print('${text} =', mem('${text}'))`;
+        //expression = `${text} = mem('${text}'); print(${text}, f'<= ${text}{${text}.shape}' if hasattr(${text}, 'shape') else f'<= ${text}')`;
+        //expression = `${text} = mem('${text}'); print(${text}, f'<= ${text} [{", ".join(map(str, ${text}.shape))}]' if hasattr(${text}, 'shape') else f'<= ${text}')`;
+        //expression = `${text}=mem('${text}'); print(${text},'<= ${text}', ['+str(${text}.shape)[1:-1]+']' if hasattr(${text},'shape') else None)`;
+        expression = `${text} = mem('${text}'); print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') else '')`;
 
         expression = JSON.stringify(expression);
         const expr = `-exec python exec(${expression})`;

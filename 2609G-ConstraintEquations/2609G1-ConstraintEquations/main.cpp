@@ -524,6 +524,7 @@ namespace test3 {
 
     std::cout << "New X =\n" << Xnew << "\n";
 
+    return 0;
     }
 }
 
@@ -627,6 +628,8 @@ namespace test4 {
         X << 3,4, 80,7, 90,40, 95,75;
         std::cout << "\ntest2: 90-degree corner at P1, 180-degree angle at P2"
                   << "\nBefore:\n" << X << "\n";
+
+        VectorXd x = X;
         if (!solve(X)) {
             std::cerr << "test2 failed to converge to the requested angles\n";
             return 1;
@@ -649,10 +652,10 @@ int main()
     setvbuf(stdout, nullptr, _IONBF, 0);
     // tail -f log.txt
     
-    test1::main();
-    test2::main();
-    test3::main();
-    test4::main();
+    if (test1::main() != 0) return 1;
+    if (test2::main() != 0) return 1;
+    if (test3::main() != 0) return 1;
+    if (test4::main() != 0) return 1;
 
-    return 1;
+    return 0;
 }
