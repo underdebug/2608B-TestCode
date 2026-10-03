@@ -28,7 +28,7 @@ import numpy as np
 import inspect
 import math
 
-LOG = 0 # 9/30 2026
+LOG = 1 # 9/30 2026
 
 np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
@@ -142,14 +142,14 @@ def cpu_array(para, Type=None, Size=None):
         if len(Size) == 1:   
             results = [None] * Size[0]  
             for i in range(Size[0]):
-                results[i] = cpu(para[i])
+                results[i] = cpu_(para[i])
             return results;
 
         elif len(Size) == 2:
             results = [[None] * Size[1] for _ in range(Size[0])]
             for i in range(Size[0]):
                 for j in range(Size[1]):
-                    results[i][j] = cpu(para[i][j])
+                    results[i][j] = cpu_(para[i][j])
             return results; 
 
 def cpu_stdvector(para, Type=None, Size=None):
@@ -204,12 +204,24 @@ def cpu_stdvector(para, Type=None, Size=None):
     return results
 
 def cpu_stdarray(para, Type=None, Size=None):
-    Addr = int(para['_M_elems'].address)
-    return cpu_memory(Addr, Type, Size)  
+    ftype = para.type.strip_typedefs().unqualified()
+        
+    Size_t = int(ftype.template_argument(1))
+    if Size_t == 0:
+        return np.array([])
 
-def cpu_stdpair(para, Type=None, Size=None):
-    Addr = int(para.address)
-    return cpu_memory(Addr, Type, Size)     
+    if Type is None:
+        Type = str(ftype.template_argument(0).strip_typedefs().unqualified())
+
+    Size = normalize_size(Size_t, Size)
+
+    return cpu_array(para['_M_elems'], Type, Size)
+
+def cpu_stdpair(para):
+    return {
+        'first': cpu_(para['first'], None, None),
+        'second': cpu_(para['second'], None, None),
+    }
 
 def cpu_struct(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
@@ -313,7 +325,7 @@ def cpu_(para, Type=None, Size=None):
             return cpu_stdarray(para, Type, Size)
 
         elif str(ftype).startswith('std::pair'):
-            return cpu_stdpair(para, Type, Size)
+            return cpu_stdpair(para)
 
         elif '::basic_string' in str(ftype): # std::string
             n = int(para['_M_string_length'])
