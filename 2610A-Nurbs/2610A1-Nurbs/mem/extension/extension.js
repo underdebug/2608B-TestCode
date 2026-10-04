@@ -65,6 +65,60 @@ async function openDebugConsoleOnStart() {
     }
 }
 
+async function getCurrentFunctionPath() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor)
+        return '';
+
+    const pos = editor.selection.active;
+
+    const symbols = await vscode.commands.executeCommand(
+        'vscode.executeDocumentSymbolProvider',
+        editor.document.uri
+    );
+
+    let path = [];
+
+    function find(symbols, currentPath = []) {
+        for (const s of symbols || []) {
+            if (!s.range.contains(pos))
+                continue;
+
+            let nextPath = currentPath;
+
+            if (
+                s.kind === vscode.SymbolKind.Function ||
+                s.kind === vscode.SymbolKind.Method ||
+                s.kind === vscode.SymbolKind.Constructor ||
+                s.kind === vscode.SymbolKind.Class ||
+                s.kind === vscode.SymbolKind.Namespace
+            ) {
+              nextPath = [
+                  ...currentPath,
+                  s.name.replace(/^.*\./, '').replace(/\(.*\)$/, '')
+              ];
+            }
+
+            const childPath = find(s.children, nextPath);
+
+            if (childPath.length)
+                return childPath;
+
+            return nextPath;
+        }
+
+        return [];
+    }
+
+    path = find(symbols);
+
+    // keep only last 1 layers
+    path = path.slice(-1);
+
+    const stack = path.join('.');
+    return stack;
+}
+
 async function activate(context) {
   //vscode.commands.executeCommand('workbench.panel.repl.view.focus');
   //~/.config/Code/User/settings.json
@@ -149,11 +203,10 @@ async function activate(context) {
           return;
         }
 
-        //expression = `print('${text} =', mem('${text}'))`;
-        //expression = `${text} = mem('${text}'); print(${text}, f'<= ${text}{${text}.shape}' if hasattr(${text}, 'shape') else f'<= ${text}')`;
-        //expression = `${text} = mem('${text}'); print(${text}, f'<= ${text} [{", ".join(map(str, ${text}.shape))}]' if hasattr(${text}, 'shape') else f'<= ${text}')`;
-        //expression = `${text}=mem('${text}'); print(${text},'<= ${text}', ['+str(${text}.shape)[1:-1]+']' if hasattr(${text},'shape') else None)`;
-        expression = `${text} = mem('${text}'); print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') else '')`;
+        let line = editor.selection.active.line + 1;
+        functionPath = await getCurrentFunctionPath();
+
+        expression = `${text} = mem('${text}'); print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') else '', '${line}', '${functionPath}')`;
 
         expression = JSON.stringify(expression);
         const expr = `-exec python exec(${expression})`;
