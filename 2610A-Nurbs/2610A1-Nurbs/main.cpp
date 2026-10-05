@@ -7,6 +7,10 @@
 
 int main(int argc, char *argv[])
 {
+    freopen("log.txt", "w", stdout);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    // tail -f log.txt
+
     // Default to Vulkan. An explicit environment override can select OpenGL.
     if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND"))
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);

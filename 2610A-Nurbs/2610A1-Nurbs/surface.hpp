@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -127,6 +128,7 @@ inline std::array<double, 10> basis(double t)
             double a = k[i + d] - k[i], c = k[i + d + 1] - k[i + 1];
             b[i] = (a ? (t - k[i]) * b[i] / a : 0) + (c ? (k[i + d + 1] - t) * b[i + 1] / c : 0);
         }
+        printf(" ");
     std::array<double, 10> r{};
     std::copy_n(b.begin(), 10, r.begin());
     return r;
