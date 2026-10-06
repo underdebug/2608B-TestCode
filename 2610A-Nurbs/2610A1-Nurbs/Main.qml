@@ -55,6 +55,15 @@ ApplicationWindow {
                         cullMode: Material.NoCulling
                     }
                 }
+                Model {
+                    visible: controlPointsVisible.checked
+                    geometry: SurfaceGeometry { controlPoints: true }
+                    materials: DefaultMaterial {
+                        diffuseColor: "#66e680"
+                        lighting: DefaultMaterial.NoLighting
+                        cullMode: Material.NoCulling
+                    }
+                }
             }
         }
 
@@ -96,6 +105,7 @@ ApplicationWindow {
                 }
                 CheckBox { id: gridVisible; text: "Surface grid"; checked: true }
                 CheckBox { id: pointsVisible; text: "Input points"; checked: true }
+                CheckBox { id: controlPointsVisible; text: "Control points (green)"; checked: true }
                 Button {
                     text: "Reset view"
                     onClicked: {

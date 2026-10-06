@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-d = MEM('d', None, None)
+d = MEM('t', None, None)
 
 x = d['x']
 y = d['y']

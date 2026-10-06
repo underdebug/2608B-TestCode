@@ -22,6 +22,21 @@ void SurfaceGeometry::setMarkers(bool value)
     emit markersChanged();
 }
 
+bool SurfaceGeometry::controlPoints() const
+{
+    return m_controlPoints;
+}
+
+void SurfaceGeometry::setControlPoints(bool value)
+{
+    if (m_controlPoints == value)
+        return;
+
+    m_controlPoints = value;
+    rebuild();
+    emit controlPointsChanged();
+}
+
 double SurfaceGeometry::interpolationError() const
 {
     return m_error;
@@ -38,7 +53,10 @@ void SurfaceGeometry::rebuild()
     for (const auto &vertex : vertices)
     {
         const bool isMarker = vertex.r > 0.5f;
-        if (isMarker != m_markers)
+        const bool isControlPoint = vertex.g > 0.9f;
+        const bool selected = m_controlPoints ? isControlPoint
+                                             : (m_markers ? isMarker : (!isMarker && !isControlPoint));
+        if (!selected)
             continue;
 
         // Qt world uses Y as height; original input uses Z as height.

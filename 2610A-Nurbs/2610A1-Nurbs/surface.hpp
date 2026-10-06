@@ -290,7 +290,8 @@ inline std::vector<Vertex> mesh(const Grid &d, const Grid &c)
      *       u=0         u=1
      *
      * 曲面：2*101*100=20200 条线段，40400 个顶点。
-     * 标记：100*3=300 条线段，600 个顶点。总计 41000 个顶点。
+     * 数据点和控制点标记：各 100*3=300 条线段，共 1200 个顶点。
+     * 总计 41600 个顶点。
      * 红色标记以数据点为中心：
      *             z
      *             |    y
@@ -301,12 +302,12 @@ inline std::vector<Vertex> mesh(const Grid &d, const Grid &c)
      * 半长 s=0.018，每条标记线总长 2*s=0.036（原始坐标单位）。
      */
     std::vector<Vertex> v;
-    // 曲面线段为蓝青色；数据点标记为红色，显示层也用红色分量区分两者。
-    auto line = [&](P a, P b, bool red = false)
+    // 蓝青色曲面、红色数据点、绿色控制点；显示层根据颜色分量分组。
+    auto line = [&](P a, P b, bool red = false, bool green = false)
     {
         for (P p : {a, b})
-            v.push_back({float(p.x), float(p.y), float(p.z), red ? 1.f : 0.15f, red ? 0.2f : 0.75f,
-                         red ? 0.15f : 1.f});
+            v.push_back({float(p.x), float(p.y), float(p.z), red ? 1.f : 0.15f,
+                         green ? 1.f : (red ? 0.2f : 0.75f), (red || green) ? 0.15f : 1.f});
     };
     constexpr int N = 100;
     // 两个参数方向各画 101 条等参数线，每条线由 100 段组成。
@@ -326,6 +327,15 @@ inline std::vector<Vertex> mesh(const Grid &d, const Grid &c)
             line(p + P{-s, 0, 0}, p + P{s, 0, 0}, true);
             line(p + P{0, -s, 0}, p + P{0, s, 0}, true);
             line(p + P{0, 0, -s}, p + P{0, 0, s}, true);
+        }
+    // 控制点使用稍大的绿色十字，便于区分重合的端点。
+    for (const auto &row : c)
+        for (const auto &p : row)
+        {
+            constexpr double s = .025;
+            line(p + P{-s, 0, 0}, p + P{s, 0, 0}, false, true);
+            line(p + P{0, -s, 0}, p + P{0, s, 0}, false, true);
+            line(p + P{0, 0, -s}, p + P{0, 0, s}, false, true);
         }
     return v;
 }
