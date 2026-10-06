@@ -1,4 +1,22 @@
 
+python launch.json
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        }
+    ]
+}
+
+
+
+
 // async function getCurrentFunctionPath() {
 //     const editor = vscode.window.activeTextEditor;
 //     if (!editor)

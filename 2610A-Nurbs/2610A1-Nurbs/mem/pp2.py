@@ -9,7 +9,7 @@ X2 = mem('X', None, [4, 2])
 print('X2', X2)
 
 
-a = mem('a')
+a = mem('k')
 print('a', a)
 
 

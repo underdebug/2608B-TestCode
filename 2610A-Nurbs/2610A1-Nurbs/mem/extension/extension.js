@@ -1,54 +1,74 @@
+
 const vscode = require('vscode');
 const path = require('path');
+const fs = require('fs');
 
-// Get the current stack frame id (needed for 'watch'/'hover' evaluations).
-async function getFrameId(session) {
-  // Newer VS Code API: the focused stack item.
-  const item = vscode.debug.activeStackItem;
-  if (item && typeof item.frameId === 'number') {
-    return item.frameId;
-  }
-  // Fallback: ask the debug adapter directly.
-  try {
-    let tid = item && typeof item.threadId === 'number' ? item.threadId : undefined;
-    if (tid === undefined) {
-      const threads = await session.customRequest('threads');
-      tid = threads && threads.threads && threads.threads[0] && threads.threads[0].id;
+let LOG = 0; 
+
+function log(...args) {
+    const stack = new Error().stack;
+    const m = stack.split('\n')[2]?.match(/:(\d+):\d+\)?$/);
+    const line = m ? m[1] : '';
+
+    vscode.debug.activeDebugConsole.appendLine(
+        `>${line} ${args.join(' ')}`
+    );
+}
+
+function readConfig() {
+    const file = path.join(__dirname, 'config.json');
+
+    try {
+        const text = fs.readFileSync(file, 'utf8');
+        return JSON.parse(text);
+    } catch (e) {
+        log('Error readConfig readFileSync', e.message)
+        return { log: 1 };
     }
-    if (tid === undefined) return undefined;
-    const st = await session.customRequest('stackTrace', {
-      threadId: tid, startFrame: 0, levels: 1
-    });
-    return st && st.stackFrames && st.stackFrames[0] && st.stackFrames[0].id;
-  } catch (e) {
-    return undefined;
-  }
 }
 
-// Show the three most recent functions from caller to callee.
+async function getFrameId(session) {
+    const item = vscode.debug.activeStackItem;
+    if (item && typeof item.frameId === 'number') {
+        return item.frameId;
+    }
+    try {
+        let tid = item && typeof item.threadId === 'number' ? item.threadId : undefined;
+        if (tid === undefined) {
+            const threads = await session.customRequest('threads');
+            tid = threads && threads.threads && threads.threads[0] && threads.threads[0].id;
+        }
+        if (tid === undefined) return undefined;
+        const st = await session.customRequest('stackTrace', {
+            threadId: tid, startFrame: 0, levels: 1
+        });
+        return st && st.stackFrames && st.stackFrames[0] && st.stackFrames[0].id;
+    } catch (e) {
+        return undefined;
+    }
+}
+
 async function getStackFunction(session) {
-  const item = vscode.debug.activeStackItem;
-  let threadId = item && item.session === session ? item.threadId : undefined;
-  if (threadId === undefined) {
-    const response = await session.customRequest('threads');
-    threadId = response.threads && response.threads[0] && response.threads[0].id;
-  }
-  if (threadId === undefined) {
-    throw new Error('No debug thread is available. Pause the program first.');
-  }
-  const response = await session.customRequest('stackTrace', {
-    threadId,
-    startFrame: 0,
-    levels: 4
-  });
-  return (response.stackFrames || []).slice(0, 4)//.reverse()
-    .map(frame => frame.name.replace(/\(.*$/, '').trim())
-    .join(' <- ');
+    const item = vscode.debug.activeStackItem;
+    let threadId = item && item.session === session ? item.threadId : undefined;
+    if (threadId === undefined) {
+        const response = await session.customRequest('threads');
+        threadId = response.threads && response.threads[0] && response.threads[0].id;
+    }
+    if (threadId === undefined) {
+        log("getStackFunction, threadId === undefined, Error")
+        return;
+    }
+    const response = await session.customRequest('stackTrace', {
+        threadId,
+        startFrame: 0,
+        levels: 4
+    });
+    return (response.stackFrames || []).slice(0, 4)
+        .map(frame => frame.name.replace(/\(.*$/, '').trim())
+        .join(' <- ');
 }
 
-// ------------------------------------------------------------
-// 1. Disable Debug Console "Collapse Identical Lines"
-// ------------------------------------------------------------
 async function disableCollapseIdenticalLines() {
     const cfg = vscode.workspace.getConfiguration('debug');
 
@@ -59,10 +79,6 @@ async function disableCollapseIdenticalLines() {
     );
 }
 
-// ------------------------------------------------------------
-// 2. Set launch.json:
-//    "internalConsoleOptions": "openOnSessionStart"
-// ------------------------------------------------------------
 async function openDebugConsoleOnStart() {
     const cfg = vscode.workspace.getConfiguration('launch');
 
@@ -86,229 +102,240 @@ async function openDebugConsoleOnStart() {
     }
 }
 
-async function activate(context) {
-  //vscode.commands.executeCommand('workbench.panel.repl.view.focus');
-  //~/.config/Code/User/settings.json
-  //"debug.internalConsoleOptions": "openOnSessionStart"
-  //.vscode/launch.json
-  //"internalConsoleOptions": "openOnSessionStart"
-  await disableCollapseIdenticalLines();
-  await openDebugConsoleOnStart();
-
-  const initializedSessions = new WeakSet();
- 
-  const cmd = vscode.commands.registerCommand('mem', async () => {
+async function printStack(session) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      //vscode.window.showWarningMessage('mem: no active editor');
-      return;
+    const line = editor.selection.active.line + 1;
+
+    let stack;
+    try {
+        LOG && log('printStack', line, "getStackFunction(session)");
+        stack = await getStackFunction(session);
+        vscode.debug.activeDebugConsole.appendLine(`${line} ${stack}`);        
+    } catch (e) {
+        log('Error printStack', line, stack, e.message);
     }
+}
 
-    const langId = editor.document.languageId;
-    const ext = path.extname(editor.document.uri.fsPath).toLowerCase();
-    const isPythonFile = langId === 'python' || ext === '.py';
-
-    const session = vscode.debug.activeDebugSession;
-    if (!session) {
-      if (isPythonFile) {
-        try {
-          // Run the whole file when there is no selection. The Python
-          // extension saves changes and uses the selected interpreter.
-          if (editor.selection.isEmpty) {
-            await vscode.commands.executeCommand('python.execInTerminal', editor.document.uri);
-          } else {
-            await vscode.commands.executeCommand('python.execSelectionInTerminal');
-          }
-        } catch (e) {
-          vscode.window.showErrorMessage(
-            'mem: Could not run Python. Enable the Microsoft Python extension and select an interpreter. ' + e.message
-          );
-        }
-      } else {
-        vscode.window.showWarningMessage('mem: Start a debug session to inspect C++ values.');
-      }
-      return;
-    }
-
-    
-    // get isPythonProgram, isPythonFile
-    let isPythonProgram = false;
-
-    const session_type = (session.type || '').toLowerCase();
-    if (['debugpy', 'python', 'pythonexperimental'].includes(session_type)) {
-        isPythonProgram = true;
-    }
-
-    // get filePath, projectPath, extensionPath
-    const filePath = path.dirname(editor.document.uri.fsPath).replace(/\\/g, '/');
-
-    let projectPath = filePath
+async function memInit(session) {
+    const editor = vscode.window.activeTextEditor;
+    const frameId = await getFrameId(session);
+    LOG && log('memInit', 'getFrameId', frameId);
+ 
+    let projectPath = '';
     const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
     if (folder) {
         projectPath = folder.uri.fsPath.replace(/\\/g, '/');
+        LOG && log('memInit', 'folder projectPath', projectPath);
+    }else{
+        projectPath = path.dirname(editor.document.uri.fsPath).replace(/\\/g, '/');
+        LOG && log('memInit', 'projectPath', projectPath);
     }
 
     const extensionPath = __dirname.replace(/\\/g, '/');
-    
+    LOG && log('memInit', 'extensionPath', extensionPath);
 
-    // get frameId
+    expr = `-exec python import sys; sys.path[:0]=["${projectPath}/mem","${extensionPath}"]; import importlib, mem; importlib.reload(mem); from mem import *;`;
+    LOG && log('memInit', expr);
+
+    try {
+        await session.customRequest('evaluate', {
+            expression: expr,
+            context: 'repl',
+            frameId: frameId
+        });
+   } catch (e) {
+        log('Error memInit', expr, e.message);
+    }
+}
+
+async function memNoPython(editor) {
+    try {
+        if (editor.selection.isEmpty) {
+            LOG && log('memNoPython', 'editor.selection.isEmpty true');
+            await vscode.commands.executeCommand('python.execInTerminal', editor.document.uri);
+        } else {
+            LOG && log('memNoPython', 'editor.selection.isEmpty false');
+            await vscode.commands.executeCommand('python.execSelectionInTerminal');
+        }
+    } catch (e) {
+        log('Error memNoPython', 'editor.selection.isEmpty', editor.selection.isEmpty, e.message);
+    }
+}
+
+async function memCppCpp(session) {
+    const editor = vscode.window.activeTextEditor;
+    const line = editor.selection.active.line + 1;
     const frameId = await getFrameId(session);
-    let expression = null;
 
-    if (!isPythonProgram) {
-      if(!isPythonFile){ // c++ program, c++ code  
-        if (!initializedSessions.has(session)) {
-          // Mark before awaiting to prevent duplicate initialization.
-          initializedSessions.add(session);
-          expression = `-exec python import sys; sys.path[:0]=["${projectPath}/mem","${extensionPath}"]; import importlib, mem; importlib.reload(mem); from mem import *;`;
-       
-          try {
-            await session.customRequest('evaluate', {
-              expression: expression,
-              context: 'repl',
-              frameId: frameId
-            });
-          } 
-          catch (e) {
-            // Allow initialization to be retried after a failure.
-            initializedSessions.delete(session);
-            //vscode.window.showErrorMessage('mem expression failed: ' + e.message);
-            return;
-          }
-        }
-        
-
-        const line = editor.selection.active.line + 1;
-        let stack;
-        try {
-            stack = await getStackFunction(session);
-            vscode.debug.activeDebugConsole.appendLine(`${line} ${stack}`);
-        } catch {}
-
-        
-        let text;
-        if (editor.selection.isEmpty) {
-          const pos = editor.selection.active;               
-          const range = editor.document.getWordRangeAtPosition(pos);
-          if (!range){
-            //vscode.window.showErrorMessage('editor.document.getWordRangeAtPosition failed');
+    let text;
+    if (editor.selection.isEmpty) {
+        const pos = editor.selection.active;
+        const range = editor.document.getWordRangeAtPosition(pos);
+        LOG && log('memCppCpp', 'pos', pos, 'range', range);
+        if (!range)
             return
-          }                                    
-          
-          text = editor.document.getText(range); // get cursor text
-        } 
-        else {
-          text = editor.document.getText(editor.selection); // get selection
-        }        
 
-        expression = `${text} = mem('${text}'); print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '${line}')`;
-        expression = JSON.stringify(expression);
-        
-        const expr = `-exec python exec(${expression})`;
-        try {
-          await session.customRequest('evaluate', {
-            expression: expr,
-            context: 'repl',
-            frameId: frameId
-          });
-          
-          //vscode.commands.executeCommand('workbench.panel.repl.view.focus');
-        } catch (e) {
-          //vscode.window.showErrorMessage('mem expr failed: ' + e.message);
-          return;
-        }
-      }
-      else{ // c++ program, python code 
-        if (!initializedSessions.has(session)) {
-          // Mark before awaiting to prevent duplicate initialization.
-          initializedSessions.add(session);
-          expression = `-exec python import sys; sys.path[:0]=["${projectPath}/mem","${extensionPath}"]; import importlib, mem; importlib.reload(mem); from mem import *;`;
-       
-          try {
-            await session.customRequest('evaluate', {
-              expression: expression,
-              context: 'repl',
-              frameId: frameId
-            });
-          } 
-          catch (e) {
-            // Allow initialization to be retried after a failure.
-            initializedSessions.delete(session);
-            //vscode.window.showErrorMessage('mem expression failed: ' + e.message);
-            return;
-          }
-        }
-
-        const line = editor.selection.active.line + 1;
-        let stack;
-        try {
-            stack = await getStackFunction(session);
-            vscode.debug.activeDebugConsole.appendLine(`${line} ${stack}`);
-        } catch {}
-        
-
-        let text;
-        if (editor.selection.isEmpty) {
-          text = editor.document.getText(); // get full text
-        } 
-        else {
-          text = editor.document.getText(editor.selection); // get selection
-        }
-
-        
-        const lines = text.split(/\r?\n/).map(line => line.replace(/\s+$/, ''));  // trim right
-        expression = lines.join(' \n');
-        expression = JSON.stringify(expression);
-
-        const expr = `-exec python exec(${expression})`;
-        try {
-          await session.customRequest('evaluate', {
-            expression: expr,
-            context: 'repl',
-            frameId: frameId
-          });
-        } catch (e) {
-          //vscode.window.showErrorMessage('mem expression failed: ' + e.message);
-          return;
-        } 
-      }
+        text = editor.document.getText(range);
+        LOG && log('memCppCpp', line, text);
+    } else {
+        text = editor.document.getText(editor.selection);
     }
-    else { // python program, python code
-      if (isPythonFile) { // debug in python code
-        const line = editor.selection.active.line + 1;
-        let stack;
-        try {
-            stack = await getStackFunction(session);
-            vscode.debug.activeDebugConsole.appendLine(`${line} ${stack}`);
-        } catch {}
 
-        if (editor.selection.isEmpty) {
-          const pos = editor.selection.active;
-          const range = editor.document.getWordRangeAtPosition(pos);
-          if (range) {
+    expression = `${text} = mem('${text}'); print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '|${line}|')`;
+    expression = JSON.stringify(expression);
+
+    const expr = `-exec python exec(${expression})`;
+    LOG && log('memCppCpp', expr);
+
+    try {
+        await session.customRequest('evaluate', {
+            expression: expr,
+            context: 'repl',
+            frameId: frameId
+        });
+    } catch (e) {
+        log('Error memCppCpp', expr, e.message);
+    }
+}
+
+async function memCppPython(session) {
+    const editor = vscode.window.activeTextEditor;
+    const line = editor.selection.active.line + 1;
+    const frameId = await getFrameId(session);
+
+    let text;
+    if (editor.selection.isEmpty) {
+        text = editor.document.getText();
+        LOG && log('memCppPython', 'editor.document.getText()', text);
+    } else {
+        text = editor.document.getText(editor.selection);
+        LOG && log('memCppPython', 'editor.document.getText(editor.selection)', text);
+    }
+
+    const lines = text.split(/\r?\n/).map(line => line.replace(/\s+$/, ''));
+    expression = lines.join(' \n');
+    expression = JSON.stringify(expression);
+
+    const expr = `-exec python exec(${expression})`;
+    LOG && log('memCppPython', expr);
+
+    try {
+        await session.customRequest('evaluate', {
+            expression: expr,
+            context: 'repl',
+            frameId: frameId
+        });
+    } catch (e) {
+        log('Error memCppPython', expr, e.message);
+    }
+}
+
+async function memPythonPython(session) {
+    const editor = vscode.window.activeTextEditor;
+    const line = editor.selection.active.line + 1;
+    const frameId = await getFrameId(session);
+
+    if (editor.selection.isEmpty) {
+        const pos = editor.selection.active;
+        const range = editor.document.getWordRangeAtPosition(pos);
+        if (range) {
             const text = editor.document.getText(range);
-            expression = `print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '${pos.line + 1}')`;
-          } else { // cursor is not on a word -> run current line
+            expression = `print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '⌊${pos.line + 1}⌉')`;
+            LOG && log('memPythonPython', 'editor.document.getText(range)', text);
+        } else {
             expression = editor.document.lineAt(pos.line).text;
-          }
-        } else { // run selected code
-          expression = editor.document.getText(editor.selection);
+            LOG && log('memPythonPython', 'editor.document.lineAt(pos.line).text', text);
         }
+    } else {
+        expression = editor.document.getText(editor.selection);
+        LOG && log('memPythonPython', 'editor.document.getText(editor.selection)', text);
+    }
 
-        try {
-          await session.customRequest('evaluate', {
-            expression: expression,
+    const expr = expression;
+    LOG && log('memPythonPython', expr);
+
+    try {
+        await session.customRequest('evaluate', {
+            expression: expr,
             context: 'repl',
             frameId: frameId
-          });
-        } catch (e) {
-          //vscode.window.showErrorMessage('mem expression failed: ' + e.message);
-          return;
-        }
-      }
+        });
+    } catch (e) {
+        log('Error memPythonPython', expr, e.message);
     }
-  });
-  context.subscriptions.push(cmd);
+}
+
+async function activate(context) {
+    const config = readConfig();
+    LOG = config.log;
+
+    LOG && log('disableCollapseIdenticalLines()');
+    await disableCollapseIdenticalLines();
+
+    LOG && log('openDebugConsoleOnStart()');
+    await openDebugConsoleOnStart();
+
+    const initializedSessions = new WeakSet();
+
+    const cmd = vscode.commands.registerCommand('mem', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            log('vscode.window.activeTextEditor; !editor return');
+            return;
+        }
+
+        let isPythonFile = true;
+        {
+            const langId = editor.document.languageId;
+            const ext = path.extname(editor.document.uri.fsPath).toLowerCase();
+            isPythonFile = langId === 'python' || ext === '.py';
+        }
+        LOG && log('isPythonFile', isPythonFile);
+
+        const session = vscode.debug.activeDebugSession;
+        if (!session) {
+            if (isPythonFile){
+                log('!session memNoPython(editor)');
+                await memNoPython(editor);   
+            }  
+            LOG && log('!session return');         
+            return;
+        }
+
+        let isPythonProgram = false;
+        {
+            const session_type = (session.type || '').toLowerCase();
+            if (['debugpy', 'python', 'pythonexperimental'].includes(session_type)) {
+                isPythonProgram = true;
+            }
+        }
+        LOG && log('isPythonProgram', isPythonProgram);    
+
+        if (!isPythonProgram) { // C++ program
+            if (!initializedSessions.has(session)) {
+                initializedSessions.add(session);
+                LOG && log('memInit(session) C++ program, initializedSessions'); 
+                await memInit(session)
+            }
+
+            if (!isPythonFile) { // C++ program, C++ file
+                LOG && log('memCppCpp(session) C++ program, C++ file')
+                await printStack(session)
+                await memCppCpp(session)
+            } else { // C++ program, Python file
+                LOG && log('memCppPython(session) C++ program, Python file')
+                await printStack(session)
+                await memCppPython(session)
+            }
+        } else { // Python program
+            if (isPythonFile) { // Python program, Python file
+                LOG && log('memCppPython(session) Python program, Python file')
+                await printStack(session)
+                await memPythonPython(session);
+            }
+        }
+    });
+    context.subscriptions.push(cmd);
 }
 
 function deactivate() {}
