@@ -3,9 +3,8 @@ git clone https://github.com/g-truc/glm.git
 
 cd glm/
 
-mkdir build && cd build
-
-cmake .. -DCMAKE_BUILD_TYPE=Debug
-cmake --build . -j$(nproc)
-
-make install
+git clone https://github.com/g-truc/glm.git
+cd glm
+cmake -S . -B build
+cmake --build build -j$(nproc)
+sudo cmake --install build
