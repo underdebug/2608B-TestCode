@@ -5,5 +5,5 @@ git clone --recursive https://github.com/isl-org/Open3D.git
 
 git clone https://gitlab.com/libeigen/eigen.git
 
-git git clone https://github.com/g-truc/glm.git
+git clone https://github.com/g-truc/glm.git
 
