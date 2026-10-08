@@ -28,17 +28,19 @@ import numpy as np
 import inspect
 import math
 
-LOG = 1 # 9/30 2026
+LOG = 0 # 10/7 2026
 
 np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
 np.set_printoptions(threshold=np.inf)
 
 if "__file__" in globals():
-    PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    # __file__ exists when Python is running code from a real .py file.
+    PATH = os.path.dirname(os.path.abspath(__file__))
 else:
-    PATH = os.path.abspath('mem/data')
-os.makedirs(PATH, exist_ok=True)
+    PATH = os.path.abspath('mem')
+os.makedirs(f'{PATH}/data', exist_ok=True)
+os.makedirs(f'{PATH}/figure', exist_ok=True)
 
 def PRINT(*args, **kwargs):
     caller = inspect.currentframe().f_back
@@ -97,6 +99,9 @@ def cpu_memory(Addr, Type, Size):
     raw = inferior.read_memory(Addr, byte_count)
     data = np.frombuffer(raw, dtype=TYPE_MAP[Type])
 
+    if Type in ['float', 'double']:
+        data = np.round(data, 3)
+
     data = data.reshape(Size)
     return data
 
@@ -142,14 +147,14 @@ def cpu_array(para, Type=None, Size=None):
         if len(Size) == 1:   
             results = [None] * Size[0]  
             for i in range(Size[0]):
-                results[i] = cpu(para[i])
+                results[i] = cpu_(para[i])
             return results;
 
         elif len(Size) == 2:
             results = [[None] * Size[1] for _ in range(Size[0])]
             for i in range(Size[0]):
                 for j in range(Size[1]):
-                    results[i][j] = cpu(para[i][j])
+                    results[i][j] = cpu_(para[i][j])
             return results; 
 
 def cpu_stdvector(para, Type=None, Size=None):
@@ -204,34 +209,46 @@ def cpu_stdvector(para, Type=None, Size=None):
     return results
 
 def cpu_stdarray(para, Type=None, Size=None):
-    Addr = int(para['_M_elems'].address)
-    return cpu_memory(Addr, Type, Size)  
+    ftype = para.type.strip_typedefs().unqualified()
+        
+    Size_t = int(ftype.template_argument(1))
+    if Size_t == 0:
+        if LOG: PRINT('Size_t', Size_t)
+        return np.array([])
 
-def cpu_stdpair(para, Type=None, Size=None):
-    Addr = int(para.address)
-    return cpu_memory(Addr, Type, Size)     
+    if Type is not None and Size is not None: # top priority
+        if LOG: PRINT('top priority', 'Type', Type, 'Size', Size)
+        return cpu_(para['_M_elems'], Type, Size)
 
-def cpu_struct(para, Type=None, Size=None):
-    ftype = para.type.strip_typedefs()
+    if Type is None:
+        Type = str(ftype.template_argument(0).strip_typedefs().unqualified())
+        # if LOG: PRINT('para Type', Type)
 
-    results = {}
-    for field in ftype.fields():
-        ftype2 = field.type.strip_typedefs().unqualified()
-        para2 = para[field.name]      
+    Size = normalize_size(Size_t, Size)  
 
-        if ftype2.code in {
-                gdb.TYPE_CODE_INT,
-                gdb.TYPE_CODE_FLT,
-                gdb.TYPE_CODE_BOOL,
-                gdb.TYPE_CODE_ENUM,
-                gdb.TYPE_CODE_ARRAY,
-                gdb.TYPE_CODE_STRUCT}:
-            results[field.name] = cpu_(para2, None, None)
+    if Type in TYPE_MAP:
+        if LOG: PRINT(f'{Type} in TYPE_MAP')
+        Addr = int(para['_M_elems'].address)
+        return cpu_memory(Addr, Type, Size)
+        
+    else:
+        # if LOG: PRINT(f'{Type} not in TYPE_MAP')
+        results = []
+        count = int(np.prod(Size))
 
-        elif ftype2.code == gdb.TYPE_CODE_PTR:
-            results[field.name] = int(para2)
+        for i in range(count):
+            # if LOG: PRINT(f'cpu_stdarray, i = {i}, para = {para["_M_elems"][i]}')
+            results.append(cpu_(para['_M_elems'][i], None, None))
 
-    return results
+        data = np.asarray(results)
+
+        return data.reshape(tuple(Size) + data.shape[1:])
+
+def cpu_stdpair(para):
+    return {
+        'first': cpu_(para['first'], None, None),
+        'second': cpu_(para['second'], None, None),
+    }
 
 def cpu_Eigen_Matrix(para, Type, Size):
     ftype = para.type.strip_typedefs()
@@ -274,6 +291,33 @@ def cpu_Eigen_Matrix(para, Type, Size):
 
     return cpu_memory(Addr, Type, Size)
 
+def cpu_glm_vector(para):
+    # template_argument(0) = 3, glm::vec<3, float, ...>
+    count = int(para.type.strip_typedefs().unqualified().template_argument(0))
+    return {axis: cpu_(para[axis]) for axis in ('x', 'y', 'z', 'w')[:count]}
+
+def cpu_struct(para, Type=None, Size=None):
+    ftype = para.type.strip_typedefs()
+
+    results = {}
+    for field in ftype.fields():
+        ftype2 = field.type.strip_typedefs().unqualified()
+        para2 = para[field.name]      
+
+        if ftype2.code in {
+                gdb.TYPE_CODE_INT,
+                gdb.TYPE_CODE_FLT,
+                gdb.TYPE_CODE_BOOL,
+                gdb.TYPE_CODE_ENUM,
+                gdb.TYPE_CODE_ARRAY,
+                gdb.TYPE_CODE_STRUCT}:
+            results[field.name] = cpu_(para2, None, None)
+
+        elif ftype2.code == gdb.TYPE_CODE_PTR:
+            results[field.name] = int(para2)
+
+    return results
+
 def cpu_(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
  
@@ -283,7 +327,7 @@ def cpu_(para, Type=None, Size=None):
 
     ftype = ftype.unqualified()
 
-    if LOG: PRINT('str(ftype)', str(ftype), 'ftype.code', ftype.code, 'Type', Type, 'Size', Size)
+    # if LOG: PRINT('str(ftype)', str(ftype), 'ftype.code', ftype.code, 'Type', Type, 'Size', Size)
 
     if ftype.code == gdb.TYPE_CODE_PTR: # 1
         if LOG: PRINT('str(ftype)', str(ftype))
@@ -313,7 +357,7 @@ def cpu_(para, Type=None, Size=None):
             return cpu_stdarray(para, Type, Size)
 
         elif str(ftype).startswith('std::pair'):
-            return cpu_stdpair(para, Type, Size)
+            return cpu_stdpair(para)
 
         elif '::basic_string' in str(ftype): # std::string
             n = int(para['_M_string_length'])
@@ -322,6 +366,9 @@ def cpu_(para, Type=None, Size=None):
 
         elif 'Eigen::Matrix' in str(ftype): # Eigen::Matrix
             return cpu_Eigen_Matrix(para, Type, Size)
+
+        elif str(ftype).startswith('glm::vec<'):
+            return cpu_glm_vector(para)
 
         else:
             return cpu_struct(para, Type, Size)
@@ -351,11 +398,11 @@ def cpu_(para, Type=None, Size=None):
 
     elif ftype.code == gdb.TYPE_CODE_FLT: # 9
         if ftype.sizeof == 4:
-            return np.float32(para)
+            return round(np.float32(para), 3)
         elif ftype.sizeof == 8:
-            return np.float64(para)
+            return round(np.float64(para), 3)
         else:
-            return np.longdouble(para)
+            return round(np.longdouble(para), 3)
 
     elif ftype.code == gdb.TYPE_CODE_BOOL: # 21
         return np.bool_(int(para))
@@ -363,6 +410,7 @@ def cpu_(para, Type=None, Size=None):
 def cpu(Name, Type=None, Size=None):
     if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size)
     para = gdb.parse_and_eval(Name)
+    if LOG: PRINT('Name', Name, 'Type', para.type, 'Bytes', para.type.sizeof)
     return cpu_(para, Type, Size)
 
 
@@ -467,11 +515,11 @@ def gpu_(para, Type=None, Size=None):
     elif ftype.code == gdb.TYPE_CODE_FLT: # 9
         if LOG: PRINT('ftype.code', gdb.TYPE_CODE_INT, 'ftype.sizeof', ftype.sizeof)
         if ftype.sizeof == 4:
-            return np.float32(para)
+            return round(np.float32(para), 3)
         elif ftype.sizeof == 8:
-            return np.float64(para)
+            return round(np.float64(para), 3)
         else:
-            return np.longdouble(para)
+            return round(np.longdouble(para), 3)
 
     else:
         if LOG: PRINT(f'{name}({ftype.code}): fail')
@@ -795,40 +843,41 @@ def mem(Name, Type=None, Size=None, Step=1):
 
     if LOG:
         data = mem_(Name, Type, Size, Step)
-        np.save(f'{PATH}/{Name}.npy', data) 
+        np.save(f'{PATH}/data/{Name}.npy', data) 
     else:
         try:
             data = mem_(Name, Type, Size, Step)
-            np.save(f'{PATH}/{Name}.npy', data) 
-        except Exception:
+            np.save(f'{PATH}/data/{Name}.npy', data) 
+        except Exception as error:
+            gdb.write(f"mem({Name!r}) failed: {error}\n", gdb.STDERR)
             data = None
             
     return data
 
-class L(list):
-    def __init__(self, data):
-        self._single_record = isinstance(data, dict)
-        super().__init__([data] if self._single_record else data)
+class L(np.ndarray):
+    def __new__(cls, data):
+        return np.asarray(data, dtype=object).view(cls)
 
     def __getitem__(self, key):
         if isinstance(key, str):
             fields = key.split('.')
             values = []
 
-            for record in self:
+            for record in np.asarray(self).flat:
                 value = record
                 for field in fields:
                     value = value[field]
                 values.append(value)
 
-            return values[0] if self._single_record else np.asarray(values)
+            if self.ndim == 0:
+                return values[0]
+            return np.asarray(values).reshape(self.shape)
 
         return super().__getitem__(key)
 
-    def __repr__(self):
-        if self._single_record:
-            return repr(super().__getitem__(0))
-        return super().__repr__()
+def MEM(Name, Type=None, Size=None, Step=1):
+    data = mem_(Name, Type, Size, Step)
+    return L(data)
 
 # Value  Constant                     Meaning
 # -1     TYPE_CODE_BITSTRING          Bit string (deprecated, kept for compatibility)

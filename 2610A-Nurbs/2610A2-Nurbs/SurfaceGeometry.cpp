@@ -14,6 +14,28 @@
 #include <string>
 #include <vector>
 
+// shader comment begin Surface 
+// layout(binding = 0, std140) uniform Surface
+// {
+//     vec4 control[100]; // xyz in world coordinates, w is the rational weight
+//     vec4 inputPoint[100];
+// } surface;
+// shader comment end Surface 
+
+
+// shader comment begin View 
+// layout(push_constant) uniform View
+// {
+//     mat4 mvp;
+//     int mode;
+// } view;
+// shader comment end View 
+
+
+// shader comment begin color 
+// layout(location = 0) out vec3 color;
+// shader comment end color 
+
 namespace
 {
 
@@ -628,6 +650,13 @@ class SurfaceGeometry::Renderer
         vkUnmapMemory(device, memory);
 
         // 3. 描述符 binding=0 指向这个 buffer，仅供顶点着色器读取。
+        // shader comment Surface
+        // layout(binding = 0, std140) uniform Surface
+        // {
+        //     vec4 control[100]; // xyz in world coordinates, w is the rational weight
+        //     vec4 inputPoint[100];
+        // } surface;
+        // The first field below declares binding 0 in descriptor set 0.
         VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
                                              VK_SHADER_STAGE_VERTEX_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo dc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -651,13 +680,29 @@ class SurfaceGeometry::Renderer
         VkDescriptorBufferInfo bi{buffer, 0, sizeof(values)};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = set;
-        write.dstBinding = 0;
+        
+        // shader comment begin Surface 
+        // layout(binding = 0, std140) uniform Surface
+        // {
+        //     vec4 control[100]; // xyz in world coordinates, w is the rational weight
+        //     vec4 inputPoint[100];
+        // } surface;
+        // shader comment end Surface 
+        write.dstBinding = 0; // shader comment Surface: connect buffer to binding 0.
+        \
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         write.pBufferInfo = &bi;
         vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 
         // 4. 每帧直接传递相机矩阵和显示模式：64 字节矩阵 + 模式及填充，共 80 字节。
+        // shader comment View
+        // layout(push_constant) uniform View
+        // {
+        //     mat4 mvp;
+        //     int mode;
+        // } view;
+        // Push constants use a byte range and shader stage, with no descriptor binding.
         VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, 80};
         VkPipelineLayoutCreateInfo lc{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         lc.setLayoutCount = 1;
@@ -679,6 +724,11 @@ class SurfaceGeometry::Renderer
          *   顶点由着色器按编号生成，因此不设置 vertex buffer 或顶点属性。
          *   每两个顶点组成一条线段；viewport/scissor 在每帧动态设置。
          */
+        // shader comment color
+        // layout(location = 0) out vec3 color;
+        // Matches nurbs.frag: layout(location = 0) in vec3 color;
+        // The pipeline connects these shader interfaces by location automatically.
+        // No descriptor binding or CPU buffer is needed for this varying.
         VkShaderModule vert = shader("nurbs.vert.spv"), frag = shader("nurbs.frag.spv");
         VkPipelineShaderStageCreateInfo stages[2]{};
         for (int i = 0; i < 2; ++i)
@@ -819,6 +869,7 @@ class SurfaceGeometry::Renderer
         begin.pClearValues = clear;
         vkCmdBeginRenderPass(cb, &begin, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        // shader comment Surface: bind set 0, containing the uniform buffer at binding 0.
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0,
                                 nullptr);
         VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
@@ -843,7 +894,15 @@ class SurfaceGeometry::Renderer
             if (visible[mode])
             {
                 push.mode = mode;
+
+                // shader comment Surface
+                // layout(binding = 0, std140) uniform Surface
+                // {
+                //     vec4 control[100]; // xyz in world coordinates, w is the rational weight
+                //     vec4 inputPoint[100];
+                // } surface;
                 vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+                
                 vkCmdDraw(cb, mode == 0 ? 40400 : 600, 1, 0, 0);
             }
         vkCmdEndRenderPass(cb);

@@ -8,7 +8,9 @@
             "program": "${workspaceFolder}/test",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "CUDA Make",
-            "internalConsoleOptions": "openOnSessionStart"
+            "internalConsoleOptions": "openOnSessionStart",
+            "console": "internalConsole",
+            "redirectOutput": true
         }
     ]
 }

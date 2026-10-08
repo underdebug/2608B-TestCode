@@ -87,6 +87,14 @@ async function openDebugConsoleOnStart() {
     let changed = false;
 
     for (const config of configurations) {
+        if (config.console !== 'internalConsole') {
+            config.console = 'internalConsole';
+            changed = true;
+        }
+        if (config.redirectOutput !== true) {
+            config.redirectOutput = true;
+            changed = true;
+        }
         if (config.internalConsoleOptions !== 'openOnSessionStart') {
             config.internalConsoleOptions = 'openOnSessionStart';
             changed = true;
@@ -148,17 +156,26 @@ async function memInit(session) {
     }
 }
 
-async function memNoPython(editor) {
+async function memNoSessionPython(editor) {
     try {
-        if (editor.selection.isEmpty) {
-            LOG && log('memNoPython', 'editor.selection.isEmpty true');
-            await vscode.commands.executeCommand('python.execInTerminal', editor.document.uri);
-        } else {
-            LOG && log('memNoPython', 'editor.selection.isEmpty false');
-            await vscode.commands.executeCommand('python.execSelectionInTerminal');
+        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const started = await vscode.debug.startDebugging(folder, {
+            name: 'Python: Current File (F8)',
+            type: 'debugpy',
+            request: 'launch',
+            program: editor.document.uri.fsPath,
+            cwd: path.dirname(editor.document.uri.fsPath),
+            console: 'internalConsole',
+            internalConsoleOptions: 'openOnSessionStart',
+            redirectOutput: true,
+            noDebug: false
+        });
+        if (!started) {
+            vscode.window.showErrorMessage('mem: Could not start the Python debugger.');
         }
     } catch (e) {
-        log('Error memNoPython', 'editor.selection.isEmpty', editor.selection.isEmpty, e.message);
+        log('Error memNoSessionPython', e.message);
+        vscode.window.showErrorMessage(`mem: ${e.message}`);
     }
 }
 
@@ -265,6 +282,29 @@ async function memPythonPython(session) {
     }
 }
 
+async function runNoSessionPython(editor) {
+    try {
+        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const started = await vscode.debug.startDebugging(folder, {
+            name: 'Python: Current File (Ctrl+F8)',
+            type: 'debugpy',
+            request: 'launch',
+            program: editor.document.uri.fsPath,
+            cwd: path.dirname(editor.document.uri.fsPath),
+            console: 'internalConsole',
+            internalConsoleOptions: 'openOnSessionStart',
+            redirectOutput: true,
+            noDebug: true
+        }, { noDebug: true });
+        if (!started) {
+            vscode.window.showErrorMessage('mem: Could not run the Python file.');
+        }
+    } catch (e) {
+        log('Error runNoSessionPython', e.message);
+        vscode.window.showErrorMessage(`mem: ${e.message}`);
+    }
+}
+
 async function activate(context) {
     const config = readConfig();
     LOG = config.log;
@@ -284,6 +324,10 @@ async function activate(context) {
             return;
         }
 
+        if (!await editor.document.save()) {
+            return;
+        }
+
         let isPythonFile = true;
         {
             const langId = editor.document.languageId;
@@ -295,8 +339,8 @@ async function activate(context) {
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             if (isPythonFile){
-                log('!session memNoPython(editor)');
-                await memNoPython(editor);   
+                log('!session memNoSessionPython(editor)');
+                await memNoSessionPython(editor);   
             }  
             LOG && log('!session return');         
             return;
@@ -335,7 +379,18 @@ async function activate(context) {
             }
         }
     });
-    context.subscriptions.push(cmd);
+    const runCmd = vscode.commands.registerCommand('run', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) return;
+
+        const isPythonFile = editor.document.languageId === 'python'
+            || path.extname(editor.document.uri.fsPath).toLowerCase() === '.py';
+        if (!isPythonFile) return;
+        if (!await editor.document.save()) return;
+
+        await runNoSessionPython(editor);
+    });
+    context.subscriptions.push(cmd, runCmd);
 }
 
 function deactivate() {}
