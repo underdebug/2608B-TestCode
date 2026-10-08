@@ -680,7 +680,6 @@ class SurfaceGeometry::Renderer
         VkDescriptorBufferInfo bi{buffer, 0, sizeof(values)};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = set;
-        
         // shader comment begin Surface 
         // layout(binding = 0, std140) uniform Surface
         // {
@@ -689,7 +688,6 @@ class SurfaceGeometry::Renderer
         // } surface;
         // shader comment end Surface 
         write.dstBinding = 0; // shader comment Surface: connect buffer to binding 0.
-        \
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         write.pBufferInfo = &bi;
