@@ -267,8 +267,6 @@ async function memPythonPython(session) {
                 "        size = list(data.shape) if data.shape else ''",
                 '    if np.issubdtype(data.dtype, np.number):',
                 '        display = data.round(3) if data.shape else data.round(3).item()',
-                '    if isinstance(display, np.ndarray):',
-                '        display = np.array2string(display, max_line_width=1000, threshold=100, edgeitems=50, precision=3, suppress_small=True)',
                 'except (TypeError, ValueError):',
                 '    size = "ragged" if isinstance(value, (list, tuple)) else ""',
                 'print(display, label, size, location)'

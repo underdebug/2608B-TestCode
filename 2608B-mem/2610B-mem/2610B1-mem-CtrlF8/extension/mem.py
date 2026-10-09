@@ -28,10 +28,10 @@ import numpy as np
 import inspect
 import math
 
-LOG = 0 # 10/7 2026
+LOG = 0 # 10/8 2026
 
-np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
+np.set_printoptions(linewidth=1000)
 np.set_printoptions(threshold=np.inf)
 
 if "__file__" in globals():
@@ -250,6 +250,28 @@ def cpu_stdpair(para):
         'second': cpu_(para['second'], None, None),
     }
 
+def cpu_struct(para, Type=None, Size=None):
+    ftype = para.type.strip_typedefs()
+
+    results = {}
+    for field in ftype.fields():
+        ftype2 = field.type.strip_typedefs().unqualified()
+        para2 = para[field.name]      
+
+        if ftype2.code in {
+                gdb.TYPE_CODE_INT,
+                gdb.TYPE_CODE_FLT,
+                gdb.TYPE_CODE_BOOL,
+                gdb.TYPE_CODE_ENUM,
+                gdb.TYPE_CODE_ARRAY,
+                gdb.TYPE_CODE_STRUCT}:
+            results[field.name] = cpu_(para2, None, None)
+
+        elif ftype2.code == gdb.TYPE_CODE_PTR:
+            results[field.name] = int(para2)
+
+    return results
+
 def cpu_Eigen_Matrix(para, Type, Size):
     ftype = para.type.strip_typedefs()
  
@@ -290,33 +312,6 @@ def cpu_Eigen_Matrix(para, Type, Size):
         return data
 
     return cpu_memory(Addr, Type, Size)
-
-def cpu_glm_vector(para):
-    # template_argument(0) = 3, glm::vec<3, float, ...>
-    count = int(para.type.strip_typedefs().unqualified().template_argument(0))
-    return {axis: cpu_(para[axis]) for axis in ('x', 'y', 'z', 'w')[:count]}
-
-def cpu_struct(para, Type=None, Size=None):
-    ftype = para.type.strip_typedefs()
-
-    results = {}
-    for field in ftype.fields():
-        ftype2 = field.type.strip_typedefs().unqualified()
-        para2 = para[field.name]      
-
-        if ftype2.code in {
-                gdb.TYPE_CODE_INT,
-                gdb.TYPE_CODE_FLT,
-                gdb.TYPE_CODE_BOOL,
-                gdb.TYPE_CODE_ENUM,
-                gdb.TYPE_CODE_ARRAY,
-                gdb.TYPE_CODE_STRUCT}:
-            results[field.name] = cpu_(para2, None, None)
-
-        elif ftype2.code == gdb.TYPE_CODE_PTR:
-            results[field.name] = int(para2)
-
-    return results
 
 def cpu_(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
@@ -367,9 +362,6 @@ def cpu_(para, Type=None, Size=None):
         elif 'Eigen::Matrix' in str(ftype): # Eigen::Matrix
             return cpu_Eigen_Matrix(para, Type, Size)
 
-        elif str(ftype).startswith('glm::vec<'):
-            return cpu_glm_vector(para)
-
         else:
             return cpu_struct(para, Type, Size)
     
@@ -410,7 +402,6 @@ def cpu_(para, Type=None, Size=None):
 def cpu(Name, Type=None, Size=None):
     if LOG: PRINT('Name', Name, 'Type', Type, 'Size', Size)
     para = gdb.parse_and_eval(Name)
-    if LOG: PRINT('Name', Name, 'Type', para.type, 'Bytes', para.type.sizeof)
     return cpu_(para, Type, Size)
 
 
@@ -848,8 +839,7 @@ def mem(Name, Type=None, Size=None, Step=1):
         try:
             data = mem_(Name, Type, Size, Step)
             np.save(f'{PATH}/data/{Name}.npy', data) 
-        except Exception as error:
-            gdb.write(f"mem({Name!r}) failed: {error}\n", gdb.STDERR)
+        except Exception:
             data = None
             
     return data

@@ -12,6 +12,10 @@
       {
         "command": "mem",
         "title": "mem"
+      },
+      {
+        "command": "mem.run",
+        "title": "mem: Run Python File Without Debugging"
       }
     ],
     "keybindings": [
@@ -108,6 +112,11 @@
         "key": "f8",
         "command": "mem",
         "when": "editorTextFocus && (inDebugMode || editorLangId == python)"
+      },
+      {
+        "key": "ctrl+f8",
+        "command": "run",
+        "when": "editorTextFocus && editorLangId == python"
       }
     ]
   }

@@ -87,14 +87,6 @@ async function openDebugConsoleOnStart() {
     let changed = false;
 
     for (const config of configurations) {
-        if (config.console !== 'internalConsole') {
-            config.console = 'internalConsole';
-            changed = true;
-        }
-        if (config.redirectOutput !== true) {
-            config.redirectOutput = true;
-            changed = true;
-        }
         if (config.internalConsoleOptions !== 'openOnSessionStart') {
             config.internalConsoleOptions = 'openOnSessionStart';
             changed = true;
@@ -156,26 +148,17 @@ async function memInit(session) {
     }
 }
 
-async function memNoSessionPython(editor) {
+async function memNoPython(editor) {
     try {
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const started = await vscode.debug.startDebugging(folder, {
-            name: 'Python: Current File (F8)',
-            type: 'debugpy',
-            request: 'launch',
-            program: editor.document.uri.fsPath,
-            cwd: path.dirname(editor.document.uri.fsPath),
-            console: 'internalConsole',
-            internalConsoleOptions: 'openOnSessionStart',
-            redirectOutput: true,
-            noDebug: false
-        });
-        if (!started) {
-            vscode.window.showErrorMessage('mem: Could not start the Python debugger.');
+        if (editor.selection.isEmpty) {
+            LOG && log('memNoPython', 'editor.selection.isEmpty true');
+            await vscode.commands.executeCommand('python.execInTerminal', editor.document.uri);
+        } else {
+            LOG && log('memNoPython', 'editor.selection.isEmpty false');
+            await vscode.commands.executeCommand('python.execSelectionInTerminal');
         }
     } catch (e) {
-        log('Error memNoSessionPython', e.message);
-        vscode.window.showErrorMessage(`mem: ${e.message}`);
+        log('Error memNoPython', 'editor.selection.isEmpty', editor.selection.isEmpty, e.message);
     }
 }
 
@@ -257,23 +240,7 @@ async function memPythonPython(session) {
         const range = editor.document.getWordRangeAtPosition(pos);
         if (range) {
             const text = editor.document.getText(range);
-            const inspectCode = [
-                'import numpy as np',
-                'display = value',
-                "size = ''",
-                'try:',
-                '    data = np.asarray(value)',
-                '    if isinstance(value, (list, tuple)) or hasattr(value, "shape"):',
-                "        size = list(data.shape) if data.shape else ''",
-                '    if np.issubdtype(data.dtype, np.number):',
-                '        display = data.round(3) if data.shape else data.round(3).item()',
-                '    if isinstance(display, np.ndarray):',
-                '        display = np.array2string(display, max_line_width=1000, threshold=100, edgeitems=50, precision=3, suppress_small=True)',
-                'except (TypeError, ValueError):',
-                '    size = "ragged" if isinstance(value, (list, tuple)) else ""',
-                'print(display, label, size, location)'
-            ].join('\n');
-            expression = `exec(${JSON.stringify(inspectCode)}, {'value': ${text}, 'label': ${JSON.stringify(`<= ${text}`)}, 'location': ${JSON.stringify(`⌊${pos.line + 1}⌉`)}})`;
+            expression = `print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '⌊${pos.line + 1}⌉')`;
             LOG && log('memPythonPython', 'editor.document.getText(range)', text);
         } else {
             expression = editor.document.lineAt(pos.line).text;
@@ -298,29 +265,6 @@ async function memPythonPython(session) {
     }
 }
 
-async function runNoSessionPython(editor) {
-    try {
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const started = await vscode.debug.startDebugging(folder, {
-            name: 'Python: Current File (Ctrl+F8)',
-            type: 'debugpy',
-            request: 'launch',
-            program: editor.document.uri.fsPath,
-            cwd: path.dirname(editor.document.uri.fsPath),
-            console: 'internalConsole',
-            internalConsoleOptions: 'openOnSessionStart',
-            redirectOutput: true,
-            noDebug: true
-        }, { noDebug: true });
-        if (!started) {
-            vscode.window.showErrorMessage('mem: Could not run the Python file.');
-        }
-    } catch (e) {
-        log('Error runNoSessionPython', e.message);
-        vscode.window.showErrorMessage(`mem: ${e.message}`);
-    }
-}
-
 async function activate(context) {
     const config = readConfig();
     LOG = config.log;
@@ -340,10 +284,6 @@ async function activate(context) {
             return;
         }
 
-        if (!await editor.document.save()) {
-            return;
-        }
-
         let isPythonFile = true;
         {
             const langId = editor.document.languageId;
@@ -355,8 +295,8 @@ async function activate(context) {
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             if (isPythonFile){
-                log('!session memNoSessionPython(editor)');
-                await memNoSessionPython(editor);   
+                log('!session memNoPython(editor)');
+                await memNoPython(editor);   
             }  
             LOG && log('!session return');         
             return;
@@ -395,18 +335,7 @@ async function activate(context) {
             }
         }
     });
-    const runCmd = vscode.commands.registerCommand('run', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) return;
-
-        const isPythonFile = editor.document.languageId === 'python'
-            || path.extname(editor.document.uri.fsPath).toLowerCase() === '.py';
-        if (!isPythonFile) return;
-        if (!await editor.document.save()) return;
-
-        await runNoSessionPython(editor);
-    });
-    context.subscriptions.push(cmd, runCmd);
+    context.subscriptions.push(cmd);
 }
 
 function deactivate() {}

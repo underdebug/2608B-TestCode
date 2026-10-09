@@ -30,8 +30,8 @@ import math
 
 LOG = 0 # 10/8 2026
 
-np.set_printoptions(linewidth=200)
 np.set_printoptions(suppress=True)
+np.set_printoptions(linewidth=1000)
 np.set_printoptions(threshold=np.inf)
 
 if "__file__" in globals():
