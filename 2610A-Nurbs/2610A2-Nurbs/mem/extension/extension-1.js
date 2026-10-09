@@ -333,50 +333,7 @@ async function memPythonPython(session) {
     }
 }
 
-async function openProjectFromEditor(editor) {
-    if (vscode.workspace.workspaceFolders?.length || !editor
-        || editor.document.uri.scheme !== 'file') return false;
-
-    let directory = path.dirname(editor.document.uri.fsPath);
-    while (true) {
-        try {
-            if (fs.statSync(path.join(directory, '.vscode')).isDirectory()) {
-                await vscode.commands.executeCommand(
-                    'vscode.openFolder', vscode.Uri.file(directory), false
-                );
-                return true;
-            }
-        } catch (e) {
-            if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') {
-                log('Error finding project folder', e.message);
-                return false;
-            }
-        }
-        const parent = path.dirname(directory);
-        if (parent === directory) return false;
-        directory = parent;
-    }
-}
-
 async function activate(context) {
-    let openingProject = false;
-    const openProject = async (editor) => {
-        if (openingProject) return false;
-        openingProject = true;
-        try {
-            return await openProjectFromEditor(editor);
-        } catch (e) {
-            log('Error opening project folder', e.message);
-            return false;
-        } finally {
-            openingProject = false;
-        }
-    };
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(openProject)
-    );
-    if (await openProject(vscode.window.activeTextEditor)) return;
-
     const config = readConfig();
     LOG = config.log;
 
