@@ -156,7 +156,7 @@ async function memInit(session) {
     }
 }
 
-async function memNoSessionPython(editor) {
+async function debugPython(editor) {
     try {
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const started = await vscode.debug.startDebugging(folder, {
@@ -174,7 +174,30 @@ async function memNoSessionPython(editor) {
             vscode.window.showErrorMessage('mem: Could not start the Python debugger.');
         }
     } catch (e) {
-        log('Error memNoSessionPython', e.message);
+        log('Error debugPython', e.message);
+        vscode.window.showErrorMessage(`mem: ${e.message}`);
+    }
+}
+
+async function runPython(editor) {
+    try {
+        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const started = await vscode.debug.startDebugging(folder, {
+            name: 'Python: Current File (Ctrl+F8)',
+            type: 'debugpy',
+            request: 'launch',
+            program: editor.document.uri.fsPath,
+            cwd: path.dirname(editor.document.uri.fsPath),
+            console: 'internalConsole',
+            internalConsoleOptions: 'openOnSessionStart',
+            redirectOutput: true,
+            noDebug: true
+        });
+        if (!started) {
+            vscode.window.showErrorMessage('mem: Could not run the Python file.');
+        }
+    } catch (e) {
+        log('Error runPython', e.message);
         vscode.window.showErrorMessage(`mem: ${e.message}`);
     }
 }
@@ -185,7 +208,7 @@ async function memCppCpp(session) {
     const frameId = await getFrameId(session);
 
     let text;
-    if (editor.selection.isEmpty) {
+    if (editor.selection.isEmpty) { // TOCKEN
         const pos = editor.selection.active;
         const range = editor.document.getWordRangeAtPosition(pos);
         LOG && log('memCppCpp', 'pos', pos, 'range', range);
@@ -194,7 +217,7 @@ async function memCppCpp(session) {
 
         text = editor.document.getText(range);
         LOG && log('memCppCpp', line, text);
-    } else {
+    } else { // SELECTION
         text = editor.document.getText(editor.selection);
     }
 
@@ -221,10 +244,10 @@ async function memCppPython(session) {
     const frameId = await getFrameId(session);
 
     let text;
-    if (editor.selection.isEmpty) {
-        text = editor.document.getText();
+    if (editor.selection.isEmpty) { // ALL TEXT
+        text = editor.document.getText(); 
         LOG && log('memCppPython', 'editor.document.getText()', text);
-    } else {
+    } else { // SELECTION
         text = editor.document.getText(editor.selection);
         LOG && log('memCppPython', 'editor.document.getText(editor.selection)', text);
     }
@@ -249,59 +272,64 @@ async function memCppPython(session) {
 
 async function memPythonPython(session) {
     const editor = vscode.window.activeTextEditor;
-    const line = editor.selection.active.line + 1;
+    // if (!editor.selection.isEmpty) {
+    //     await vscode.commands.executeCommand('editor.debug.action.selectionToRepl');
+    //     return;
+    // }
+    
     const frameId = await getFrameId(session);
+    let expression;
 
     if (editor.selection.isEmpty) {
         const pos = editor.selection.active;
         const range = editor.document.getWordRangeAtPosition(pos);
-        if (range) {
+        if (range) { // TOCKEN
             const text = editor.document.getText(range);
-            expression = `print(${text}, '<= ${text}', list(${text}.shape) if hasattr(${text}, 'shape') and ${text}.shape else '', '⌊${pos.line + 1}⌉')`;
-            LOG && log('memPythonPython', 'editor.document.getText(range)', text);
-        } else {
-            expression = editor.document.lineAt(pos.line).text;
-            LOG && log('memPythonPython', 'editor.document.lineAt(pos.line).text', text);
+            LOG && log('memCppPython TOCKEN', 'range', JSON.stringify(range));
+            LOG && log('memCppPython TOCKEN', 'text', text);
+
+            const inspectCode = [
+                'import numpy as np',
+                'display = value',
+                "size = ''",
+                'try:',
+                '    data = np.asarray(value)',
+                '    if isinstance(value, (list, tuple)) or hasattr(value, "shape"):',
+                "        size = list(data.shape) if data.shape else ''",
+                '    if np.issubdtype(data.dtype, np.number):',
+                '        display = data.round(3) if data.shape else data.round(3).item()',
+                '    if isinstance(display, np.ndarray):',
+                '        display = np.array2string(display, max_line_width=1000, threshold=100, edgeitems=50, precision=3, suppress_small=True)',
+                'except (TypeError, ValueError):',
+                '    size = "ragged" if isinstance(value, (list, tuple)) else ""',
+                'print(display, label, size, location)'
+            ].join('\n');
+            expression = `exec(${JSON.stringify(inspectCode)}, {'value': ${text}, 'label': ${JSON.stringify(`<= ${text}`)}, 'location': ${JSON.stringify(`⌊${pos.line + 1}⌉`)}})`;
+     
+        } else { // ALL TEXT
+            expression = editor.document.getText(); 
+            LOG && log('memPythonPython', 'editor.document.getText()', expression);
+
         }
-    } else {
+    } else { // SELECTION
         expression = editor.document.getText(editor.selection);
-        LOG && log('memPythonPython', 'editor.document.getText(editor.selection)', text);
+        LOG && log('memPythonPython', 'editor.document.getText(editor.selection)', expression);
     }
 
     const expr = expression;
     LOG && log('memPythonPython', expr);
 
     try {
-        await session.customRequest('evaluate', {
+        const response = await session.customRequest('evaluate', {
             expression: expr,
             context: 'repl',
             frameId: frameId
         });
-    } catch (e) {
-        log('Error memPythonPython', expr, e.message);
-    }
-}
-
-async function runNoSessionPython(editor) {
-    try {
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const started = await vscode.debug.startDebugging(folder, {
-            name: 'Python: Current File (Ctrl+F8)',
-            type: 'debugpy',
-            request: 'launch',
-            program: editor.document.uri.fsPath,
-            cwd: path.dirname(editor.document.uri.fsPath),
-            console: 'internalConsole',
-            internalConsoleOptions: 'openOnSessionStart',
-            redirectOutput: true,
-            noDebug: true
-        }, { noDebug: true });
-        if (!started) {
-            vscode.window.showErrorMessage('mem: Could not run the Python file.');
+        if (response && typeof response.result === 'string' && response.result.length > 0) {
+            vscode.debug.activeDebugConsole.appendLine(response.result);
         }
     } catch (e) {
-        log('Error runNoSessionPython', e.message);
-        vscode.window.showErrorMessage(`mem: ${e.message}`);
+        log('Error memPythonPython', expr, e.message);
     }
 }
 
@@ -324,9 +352,7 @@ async function activate(context) {
             return;
         }
 
-        if (!await editor.document.save()) {
-            return;
-        }
+        if (!await editor.document.save()) return;
 
         let isPythonFile = true;
         {
@@ -339,8 +365,8 @@ async function activate(context) {
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             if (isPythonFile){
-                log('!session memNoSessionPython(editor)');
-                await memNoSessionPython(editor);   
+                log('!session runPython(editor)');
+                await runPython(editor);   
             }  
             LOG && log('!session return');         
             return;
@@ -373,24 +399,30 @@ async function activate(context) {
             }
         } else { // Python program
             if (isPythonFile) { // Python program, Python file
-                LOG && log('memCppPython(session) Python program, Python file')
+                LOG && log('memPythonPython(session) Python program, Python file')
                 await printStack(session)
                 await memPythonPython(session);
             }
         }
     });
-    const runCmd = vscode.commands.registerCommand('run', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) return;
 
+    const debugCmd = vscode.commands.registerCommand('debug', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            log('vscode.window.activeTextEditor; !editor return');
+            return;
+        }
+        
         const isPythonFile = editor.document.languageId === 'python'
             || path.extname(editor.document.uri.fsPath).toLowerCase() === '.py';
         if (!isPythonFile) return;
+        
         if (!await editor.document.save()) return;
 
-        await runNoSessionPython(editor);
+        await debugPython(editor);
     });
-    context.subscriptions.push(cmd, runCmd);
+
+    context.subscriptions.push(cmd, debugCmd);
 }
 
 function deactivate() {}

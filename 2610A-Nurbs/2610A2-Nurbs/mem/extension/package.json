@@ -94,12 +94,12 @@
           "when": "editorHasDefinitionProvider && editorTextFocus && !isInEmbeddedEditor"
       },
       {
-          "key": "f6",
+          "key": "f4",
           "command": "cmake.build",
           "when": "!inDebugMode"
       },
       {
-          "key": "shift+f6",
+          "key": "shift+f4",
           "command": "cmake.clean",
           "when": "!inDebugMode"
       },
@@ -114,8 +114,8 @@
         "when": "editorTextFocus && (inDebugMode || editorLangId == python)"
       },
       {
-        "key": "ctrl+f8",
-        "command": "run",
+        "key": "f6",
+        "command": "debug",
         "when": "editorTextFocus && editorLangId == python"
       }
     ]
