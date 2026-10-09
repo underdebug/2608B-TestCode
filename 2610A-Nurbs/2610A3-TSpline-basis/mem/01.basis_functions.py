@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.integrate import cumulative_trapezoid
 
 knots = np.arange(0.0, 13.0)
-x = np.linspace(0.0, 12.0, 12001)
+x = np.linspace(0.0, 12.0, 25)
 
 
 def basis(order=4, rho=1.5):
@@ -22,6 +22,7 @@ def basis(order=4, rho=1.5):
             z[right] = np.sinh(rho * (knots[i + 2] - x[right])) / np.sinh(
                 rho * (knots[i + 2] - knots[i + 1])
             )
+            print('')
         arr.append(z)
     for k in range(3, order + 1):
         cumulative = []

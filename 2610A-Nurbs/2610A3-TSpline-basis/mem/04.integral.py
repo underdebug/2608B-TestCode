@@ -1,4 +1,3 @@
-
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 
